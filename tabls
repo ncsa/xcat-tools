@@ -1,0 +1,3 @@
+#!/bin/bash
+
+for t in $(tabdump); do c=$(tabdump $t | wc -l); [ $c -gt 2 ] && echo $t; done

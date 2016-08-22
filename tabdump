@@ -1,0 +1,5 @@
+#!/bin/bash
+
+tablename="${!#}"
+params="${@:1:$(($#-1))}"
+/opt/xcat/sbin/tabdump $tablename | /root/scripts/columnify.py $params

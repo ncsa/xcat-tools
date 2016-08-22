@@ -1,0 +1,8 @@
+# override tabdump to align columns
+alias td=/root/scripts/tabdump
+
+# override tabdump to align columns and filter empty cols
+alias tdf='/root/scripts/tabdump -f'
+
+# List only tables that have actual data in them
+alias tabls=/root/scripts/tabls
