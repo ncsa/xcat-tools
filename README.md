@@ -61,3 +61,7 @@ switch
 switches
 vpd
 ```
+
+## get_lenovo_mac
+Uses `nodels` and `rinv` to get first mac address and apply it to the node
+definition.  Works only if `rinv` can get mac addresses from the node.
