@@ -1,0 +1,64 @@
+#!/bin/bash
+
+PRG=$( basename $0 )
+
+
+function croak {
+  echo "ERROR: $*"
+  exit 99
+}
+
+
+function usage {
+  cat <<ENDHERE
+
+$PRG
+    Get hardware details for specific nodes.
+Usage:
+    $PRG [OPTIONS] {nodenames | noderange}
+    where:
+        nodenames must be a space separated list of valid nodenames
+        or
+        noderange must be a valid noderange expression understood by the 'nodels' command
+
+OPTIONS:
+  -h    print help message and exit
+  -v    show what is happening
+
+ENDHERE
+}
+
+ENDWHILE=0
+VERBOSE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h) usage
+        exit 0;;
+    -v) VERBOSE=1;;
+    --) ENDWHILE=1;;
+     *) ENDWHILE=1; break;;
+  esac
+  shift
+done
+
+[[ $VERBOSE -eq 1 ]] && set -x
+
+# Verify noderange
+if [[ $# -lt 1 ]] ; then
+  echo "Must specify nodename" 1>&2
+  exit 1
+elif [[ $# -eq 1 ]] ; then
+  nodelist=( $( nodels $1 ) )
+else
+  nodelist=( $( for a in $*; do nodels $a; done ) )
+fi
+
+for n in "${nodelist[@]}" ; do
+  # Get machine info
+  rinv "$n" | grep -E 'Manufacturer ID|System Description|RDIMM|CPU .+ Product Version'
+
+  # Get disk info
+  xdsh "$n" 'lsblk -inbdo TYPE,SIZE,MODEL | sort -n -k2' 
+done \
+| xdshbak -c
+

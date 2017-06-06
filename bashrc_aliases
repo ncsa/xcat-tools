@@ -6,3 +6,6 @@ alias tdf='/root/scripts/tabdump -f'
 
 # List only tables that have actual data in them
 alias tabls=/root/scripts/tabls
+
+# short alias for rebuild_xcat_node
+alias rebuild=/root/scripts/rebuild_xcat_node
