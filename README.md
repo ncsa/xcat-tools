@@ -4,6 +4,7 @@ Useful tools for xCAT
 # Installation
 1. `mkdir working; cd working`
 1. `git clone https://github.com/ncsa/xcat-tools.git`
+1. `cd xcat_tools`
 1. `cp bashrc_aliases /root/.xcat_aliases`
 1. `echo . ~/.xcat_aliases >> /root/.bashrc`
 1. `mkdir /root/scripts`
