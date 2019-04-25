@@ -1,4 +1,11 @@
-#!/usr/bin/python
+#!.venv/bin/python3
+
+# Require python 3
+import sys
+if sys.version_info.major < 3:
+    msg = "Requires python version 3; attempted with version '{}'".format( sys.version_info.major )
+    raise UserWarning( msg )
+
 import csv
 import tabulate
 import sys
