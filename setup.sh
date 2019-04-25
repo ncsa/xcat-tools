@@ -118,7 +118,7 @@ check_or_create_bashrcd
 setup_python_venv
 
 install_scripts
-find "$INSTALL_DIR" -type f -name '*.py' -newer "$BASE" \
+find "$INSTALL_DIR" -maxdepth 1 -type f -name '*.py' -newer "$BASE" \
 | while read ; do
     log "Installed: '$REPLY'"
 done
