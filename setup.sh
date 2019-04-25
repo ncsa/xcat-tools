@@ -96,7 +96,7 @@ install_bashrcd() {
     find "$BASE/bashrc.d/" -type f -print \
     | while read; do
         fn=$( basename "$REPLY" )
-        install -vbC --suffix="$TS" -t "$tgtdir" $REPLY
+        install -vbC --suffix="$TS" -m '0644' -t "$tgtdir" $REPLY
         sed -i -e "s?___INSTALL_DIR___?$INSTALL_DIR?" "$tgtdir/$fn"
     done
 }
