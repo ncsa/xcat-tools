@@ -21,6 +21,26 @@ log() {
 }
 
 
+ensure_epel() {
+	yum -y install epel-release
+}
+
+install_prereqs() {
+	PKGLIST=( bind-utils \
+		      iproute \
+		      less \
+		      lsof \
+		      lvm2 \
+		      net-tools \
+		      tree \
+		      vim \
+		      which
+	)
+    ensure_epel
+	yum -y install "${PKGLIST[@]}"
+}
+
+
 set_install_dir() {
     [[ $DEBUG -gt 0 ]] && set -x
     INSTALL_DIR=$HOME/scripts
@@ -36,12 +56,25 @@ set_install_dir() {
 }
 
 
-find_python3() {
+install_python() {
+	YUMPKGLIST=( python36
+	)
+	yum -y install "${YUMPKGLIST[@]}"
+    PYTHON=$(which python3)
+}
+
+
+ensure_python() {
     [[ $DEBUG -gt 0 ]] && set -x
     PYTHON=$(which python3) 2>/dev/null
     [[ -n "$PY3_PATH" ]] && PYTHON=$PY3_PATH
+    [[ -z "$PYTHON" ]] && {
+        install_python
+    }
     [[ -z "$PYTHON" ]] && die "Unable to find Python3. Try setting PY3_PATH env var."
     "$PYTHON" "$BASE/require_py_v3.py" || die "Python version too low"
+    "$PYTHON" -m ensurepip
+    "$PYTHON" -m pip install -U pip
 }
 
 
@@ -111,10 +144,12 @@ BASE=$(readlink -e $( dirname $0 ) )
 debug "Got BASE: '$BASE'"
 TS=$(date +%s)
 
+install_prereqs
+
 set_install_dir
 log "Installing into: '$INSTALL_DIR'"
 
-find_python3
+ensure_python
 debug "Got PYTHON: '$PYTHON'"
 
 check_or_create_bashrcd
