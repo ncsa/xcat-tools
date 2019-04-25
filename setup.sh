@@ -85,7 +85,11 @@ install_scripts() {
     | while read ; do
         fn=$( basename "$REPLY" )
         install -vbC --suffix="$TS" -t "$INSTALL_DIR" $REPLY
-        set_shebang_path "$V_PYTHON" "$INSTALL_DIR/$fn"
+    done
+    # fix exec path for python scripts
+    find "$INSTALL_DIR" -maxdepth 1 -type f -name '*.py' -print \
+    | while read ; do
+        set_shebang_path "$V_PYTHON" "$REPLY"
     done
 }
 
