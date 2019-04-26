@@ -1,6 +1,76 @@
 #!/bin/bash
 
-for t in $(tabdump | grep -v auditlog); do
-    c=$(tabdump $t | wc -l)
-    [ $c -gt 2 ] && echo $t
+PRG=$( basename $0 )
+
+
+croak() {
+  echo "ERROR: $*"
+  exit 99
+}
+
+
+usage() {
+  cat <<ENDHERE
+
+$PRG
+    List non-empty xCAT table names
+Usage:
+    $PRG [OPTIONS]
+
+OPTIONS:
+  -h    print help message and exit
+  -a    All tables (by default, ignores known auto-populated tables)
+
+NOTE: Table 'auditlog' will always be ignored.
+
+ENDHERE
+}
+
+
+mk_ignore_list() {
+    IGNORE_LIST=( auditlog )
+    if [[ $SHOWALL -eq 0 ]] ; then
+        IGNORE_LIST+=( 
+            bootparams \
+            chain \
+            discoverydata \
+            linuximage \
+            mac \
+            nodelist \
+            nodetype \
+            osdistro \
+            osimage \
+            policy
+        )
+    fi
+}
+
+
+do_tabls() {
+    patrn=$( ( IFS='|'; cat <<< "${IGNORE_LIST[*]}" )  )
+    echo "patrn: '$patrn'"
+    echo "IFS: '$IFS'"
+    for t in $(tabdump | grep -E -v "$patrn"); do
+#        c=$(tabdump $t | wc -l)
+#        [ $c -gt 2 ] && echo $t
+        echo $t
+    done
+}
+
+
+ENDWHILE=0
+SHOWALL=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h) usage
+        exit 0;;
+    -a) SHOWALL=1;;
+    --) ENDWHILE=1;;
+     *) ENDWHILE=1; break;;
+  esac
+  shift
 done
+
+mk_ignore_list
+
+do_tabls
