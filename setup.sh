@@ -113,29 +113,48 @@ check_or_create_bashrcd() {
 
 
 install_scripts() {
+    # 1. Install to a temp dir
+    # 2. Make modifications
+    # 3. Install from temp dir to tgt dir
     [[ $DEBUG -gt 0 ]] && set -x
+    tmpdir=$(mktemp -d)
+    # install into tmpdir
     find "$BASE/scripts/" -type f -print \
-    | while read ; do
-        fn=$( basename "$REPLY" )
-        install -vbC --suffix="$TS" -t "$INSTALL_DIR" $REPLY
-    done
+    | xargs install -t "$tmpdir"
+#    
+#    | while read ; do
+#        fn=$( basename "$REPLY" )
+#        install -vbC --suffix="$TS" -t "$INSTALL_DIR" $REPLY
+#    done
     # fix exec path for python scripts
-    find "$INSTALL_DIR" -maxdepth 1 -type f -name '*.py' -print \
+    find "$tmpdir" -type f -name '*.py' -print \
     | while read ; do
         set_shebang_path "$V_PYTHON" "$REPLY"
     done
+    # install from tmpdir to tgtdir
+    find "$tmpdir" -type f -print \
+    | xargs install -vbC --suffix="$TS" -t "$INSTALL_DIR"
+#
+#    | while read ; do
+#        set_shebang_path "$V_PYTHON" "$REPLY"
+#    done
+    find "$tmpdir" -delete
 }
 
 
 install_bashrcd() {
     [[ $DEBUG -gt 0 ]] && set -x
+    tmpdir=$(mktemp -d)
     tgtdir="$HOME/.bashrc.d"
     find "$BASE/bashrc.d/" -type f -print \
+    | xargs install -t "$tmpdir"
+    find "$tmpdir" -type f -print \
     | while read; do
-        fn=$( basename "$REPLY" )
-        install -vbC --suffix="$TS" -m '0644' -t "$tgtdir" $REPLY
-        sed -i -e "s?___INSTALL_DIR___?$INSTALL_DIR?" "$tgtdir/$fn"
+        sed -i -e "s?___INSTALL_DIR___?$INSTALL_DIR?" "$REPLY"
     done
+    find "$tmpdir" -type f -print \
+    | xargs install -vbC --suffix="$TS" -m '0644' -t "$tgtdir"
+    find "$tmpdir" -delete
 }
 
 
