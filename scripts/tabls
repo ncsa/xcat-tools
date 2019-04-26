@@ -1,3 +1,6 @@
 #!/bin/bash
 
-for t in $(tabdump); do c=$(tabdump $t | wc -l); [ $c -gt 2 ] && echo $t; done
+for t in $(tabdump | grep -v auditlog); do
+    c=$(tabdump $t | wc -l)
+    [ $c -gt 2 ] && echo $t
+done
