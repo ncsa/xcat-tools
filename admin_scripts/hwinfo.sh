@@ -1,15 +1,22 @@
 #!/bin/bash
 
+BASE=___INSTALL_DIR___
+LIB=$BASE/libs
 PRG=$( basename $0 )
 
+# Import libs
+imports=( logging build_nodelist )
+for f in "${imports[@]}"; do
+    srcfn="${LIB}/${f}.sh"
+    [[ -f "$srcfn" ]] || {
+        echo "Failed to find lib file '$srcfn'"
+        exit 1
+    }
+    source "$srcfn"
+done
 
-function croak {
-  echo "ERROR: $*"
-  exit 99
-}
 
-
-function usage {
+usage() {
   cat <<ENDHERE
 
 $PRG
@@ -44,14 +51,7 @@ done
 [[ $VERBOSE -eq 1 ]] && set -x
 
 # Verify noderange
-if [[ $# -lt 1 ]] ; then
-  echo "Must specify nodename" 1>&2
-  exit 1
-elif [[ $# -eq 1 ]] ; then
-  nodelist=( $( nodels $1 ) )
-else
-  nodelist=( $( for a in $*; do nodels $a; done ) )
-fi
+nodelist=( build_nodelist "$@" )
 
 for n in "${nodelist[@]}" ; do
   # Get machine info
@@ -61,4 +61,3 @@ for n in "${nodelist[@]}" ; do
   xdsh "$n" 'lsblk -inbdo TYPE,SIZE,MODEL | sort -n -k2' 
 done \
 | xdshbak -c
-

@@ -3,7 +3,13 @@ Useful tools for xCAT
 
 # Installation
 1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh | bash`
- 
+
+|||
+| --- | --- |
+| :information_source: | Default install location is `$HOME/xcat-tools` |
+|| For custom install location, use: `export XCAT_TOOLS_INSTALL_DIR=/custom/install/path` |
+|| Install also touches `$HOME/.bashrc` and `$HOME/.bashrc.d` |
+
 # Usage
 ## tabdump / td
 Align tabdump output by column

@@ -1,12 +1,19 @@
 #!/bin/bash
 
+BASE=___INSTALL_DIR___
+LIB=$BASE/libs
 PRG=$( basename $0 )
 
-
-croak() {
-  echo "ERROR: $*"
-  exit 99
-}
+# Import libs
+imports=( logging )
+for f in "${imports[@]}"; do
+    srcfn="${LIB}/${f}.sh"
+    [[ -f "$srcfn" ]] || {
+        echo "Failed to find lib file '$srcfn'"
+        exit 1
+    }
+    source "$srcfn"
+done
 
 
 usage() {
@@ -51,9 +58,8 @@ do_tabls() {
     echo "patrn: '$patrn'"
     echo "IFS: '$IFS'"
     for t in $(tabdump | grep -E -v "$patrn"); do
-#        c=$(tabdump $t | wc -l)
-#        [ $c -gt 2 ] && echo $t
-        echo $t
+        c=$(tabdump $t | wc -l)
+        [ $c -gt 2 ] && echo $t
     done
 }
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 
+BASE=___INSTALL_DIR___
+LIB=$BASE/libs
 TABDUMP=/opt/xcat/sbin/tabdump
 
 [[ $# -lt 1 ]] && { $TABDUMP; exit 0
@@ -7,4 +9,4 @@ TABDUMP=/opt/xcat/sbin/tabdump
 
 tablename="${!#}"
 params="${@:1:$(($#-1))}"
-$TABDUMP $tablename | /root/scripts/columnify.py $params
+$TABDUMP $tablename | $BASE/scripts/columnify.py $params

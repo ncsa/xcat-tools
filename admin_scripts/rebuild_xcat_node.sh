@@ -1,20 +1,27 @@
 #!/bin/bash
 
+BASE=___INSTALL_DIR___
+LIB=$BASE/libs
 PRG=$( basename $0 )
 
+# Import libs
+imports=( logging build_nodelist )
+for f in "${imports[@]}"; do
+    srcfn="${LIB}/${f}.sh"
+    [[ -f "$srcfn" ]] || {
+        echo "Failed to find lib file '$srcfn'"
+        exit 1
+    }
+    source "$srcfn"
+done
 
-function croak {
-  echo "ERROR: $*"
-  exit 99
-}
 
-
-function get_imagename {
+get_imagename() {
   lsdef $1 | awk -F= '/provmethod/ {print $NF}'
 }
 
 
-function usage {
+usage() {
   cat <<ENDHERE
 
 $PRG
@@ -68,18 +75,11 @@ done
 
 [[ $VERBOSE -eq 1 ]] && set -x
 
-### Build nodelist from cmdline args
-if [[ $# -lt 1 ]] ; then
-  echo "Must specify nodename" 1>&2
-  exit 1
-elif [[ $# -eq 1 ]] ; then
-  nodelist=( $( nodels $1 ) )
-else
-  nodelist=( $( for a in $*; do nodels $a; done ) )
-fi
+# Build nodelist from cmdline args
+nodelist=( build_nodelist "$@" )
 
 
-### Do work for each node
+# Do work for each node
 action=
 [[ $DRYRUN -ne 0 ]] && action="echo"
 for n in "${nodelist[@]}" ; do

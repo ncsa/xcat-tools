@@ -1,0 +1,55 @@
+#/bin/bash
+
+#-------------------------------------------------------------------------------
+#=head1  kerberos_keytab
+#=head2  Install pre-existing kerberos keytabs if they exist
+#      Usage:
+#      1. use $PUPPETSERVER or $MASTER as the puppet server
+#            updatenode <noderange> -P "kerberos_keytab"
+#
+# written 20181025 wglick for NCSA
+#=cut
+#-------------------------------------------------------------------------------
+
+logger -t xcat -p local4.info "running kerberos_keytab on OS $os on node $NODE"
+
+
+KEYTABDIR=/etc
+BKUP_KEYTABDIR=/install/files/compute/var/lib/kerberos/keytab
+
+
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+#logger -t xcat -p local4.info "copying kerberos keytab from the master."
+
+logr "ensure $MASTER:$INSTALLDIR is mounted"
+/xcatpost/mountinstall || exit 2
+#ls -R /install
+
+logr "copying kerberos keytab from the master."
+set -x
+if [[ -f $BKUP_KEYTABDIR/${NODE}.krb5.keytab ]]; then
+  cp $BKUP_KEYTABDIR/${NODE}.krb5.keytab $KEYTABDIR/krb5.keytab
+  chmod 600 $KEYTABDIR/krb5.keytab
+  chown root.root $KEYTABDIR/krb5.keytab
+fi
+
+ls -R $KEYTABDIR/krb5.keytab
+strings $KEYTABDIR/krb5.keytab | grep -i '${NODE}'
+set +x
+
+
+logr "end of kerberos_keytab on OS $os on node $NODE"
+
+exit 0
