@@ -54,10 +54,9 @@ mk_ignore_list() {
 
 
 do_tabls() {
-    patrn=$( ( IFS='|'; cat <<< "${IGNORE_LIST[*]}" )  )
-    echo "patrn: '$patrn'"
-    echo "IFS: '$IFS'"
-    for t in $(tabdump | grep -E -v "$patrn"); do
+    local _patrn
+    _patrn=$( ( IFS='|'; cat <<< "${IGNORE_LIST[*]}" )  )
+    for t in $(tabdump | grep -E -v "$_patrn"); do
         c=$(tabdump $t | wc -l)
         [ $c -gt 2 ] && echo $t
     done
