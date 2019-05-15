@@ -9,4 +9,4 @@ TABDUMP=/opt/xcat/sbin/tabdump
 
 tablename="${!#}"
 params="${@:1:$(($#-1))}"
-$TABDUMP $tablename | $BASE/admins_scripts/columnify.py $params
+$TABDUMP $tablename | $BASE/admin_scripts/columnify.py $params
