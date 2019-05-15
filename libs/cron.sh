@@ -1,5 +1,5 @@
 mk_cron() {
-    [[ $DEBUG -eq 0 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     local _cronscript _schedparts _fn _tmpfn
     _cronscript="$1"
     shift
@@ -18,7 +18,7 @@ mk_cron() {
 
 
 rm_cron() {
-    [[ $DEBUG -eq 0 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     local _cronscript _fn _tmpfn
     _cronscript="$1"
     shift

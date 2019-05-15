@@ -220,35 +220,20 @@ for f in "${imports[@]}"; do
     source "$srcfn"
 done
 
-#DEBUG=$YES
 install_prereqs
-#exit
 
-#DEBUG=$YES
 set_install_dir
 log "Installing into: '$INSTALL_DIR'"
-#exit
 
-#DEBUG=$YES
 populate_script_install_map #must come after set_install_dir
-#exit
 
-#DEBUG=$YES
 ensure_python
 debug "Got PYTHON: '$PYTHON'"
-#exit
 
-#DEBUG=$YES
 setup_python_venv
-#exit
 
-#DEBUG=$YES
 mk_bashrcd
-#exit
 
-#DEBUG=$YES
 install_scripts
-#exit
 
-#DEBUG=$YES
 mk_cron_jobs

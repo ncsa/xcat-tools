@@ -1,4 +1,5 @@
 pathmunge () {
+    [[ $DEBUG -eq $YES ]] && set -x
     case ":${PATH}:" in
         *:"$1":*)
             ;;
