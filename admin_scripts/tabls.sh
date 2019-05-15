@@ -36,7 +36,7 @@ ENDHERE
 
 mk_ignore_list() {
     IGNORE_LIST=( auditlog )
-    if [[ $SHOWALL -eq 0 ]] ; then
+    if [[ $SHOWALL -eq $NO ]] ; then
         IGNORE_LIST+=( 
             bootparams \
             chain \
@@ -64,12 +64,12 @@ do_tabls() {
 
 
 ENDWHILE=0
-SHOWALL=0
+SHOWALL=$NO
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   case $1 in
     -h) usage
         exit 0;;
-    -a) SHOWALL=1;;
+    -a) SHOWALL=$YES;;
     --) ENDWHILE=1;;
      *) ENDWHILE=1; break;;
   esac
