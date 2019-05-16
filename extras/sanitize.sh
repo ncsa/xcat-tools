@@ -1,5 +1,7 @@
 #!/bin/bash
 
+# For debugging setup.sh ... clean all install paths
+
 # Clear dirs
 dirs=( $HOME/xcat-tools $HOME/.bashrc.d )
 for d in "${dirs[@]}" ; do

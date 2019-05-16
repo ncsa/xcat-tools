@@ -1,7 +1,14 @@
-# OS Image manipulation
-## Install a custom partitioning script
+# xcat-tools/extras
+
+### mk_root_100.sh
+Custom partitioning scheme.
+
+Install into an osimage:
 ```
-# lsdef -t osimage -o centos7.4-x86_64-install-compute -i partitionfile
-Object name: centos7.4-x86_64-install-compute
-    partitionfile=s:/install/custom/mk_root_100.sh
+mkdir -p /install/custom
+cp <path_to>/xcat-tools/extras/mk_root_100.sh /install/custom/
+chdef -t osimage -o <OSIMAGE_NAME> partitionfile=s:/install/custom/mk_root_100.sh
 ```
+
+### sanitize.sh
+Clean install area, for debugging setup.sh

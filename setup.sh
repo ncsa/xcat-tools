@@ -5,23 +5,6 @@ NO=1
 DEBUG=$NO
 VERBOSE=$YES
 
-die() {
-    echo "ERROR: $*" >&2
-    exit 2
-}
-
-
-debug() {
-    [[ $DEBUG -eq $YES ]] || return
-    echo "DEBUG (${BASH_SOURCE[1]} [${BASH_LINENO[0]}] ${FUNCNAME[1]}) $*"
-}
-
-
-log() {
-    [[ $VERBOSE -eq $YES ]] || return
-    echo "LOG $*"
-}
-
 
 ensure_epel() {
     local _yumopts=( '-q' )
@@ -60,12 +43,12 @@ set_install_dir() {
     [[ -n "$XCAT_TOOLS_INSTALL_DIR" ]] && INSTALL_DIR="$XCAT_TOOLS_INSTALL_DIR"
 
     [[ -z "$INSTALL_DIR" ]] \
-        && die "Unable to determine install base. Try setting 'XCAT_TOOLS_INSTALL_DIR' env var."
+        && croak "Unable to determine install base. Try setting 'XCAT_TOOLS_INSTALL_DIR' env var."
 
     [[ -d "$INSTALL_DIR" ]] || mkdir -p $INSTALL_DIR
 
     [[ -d "$INSTALL_DIR" ]] \
-    || die "Unable to find or create script dir: '$INSTALL_DIR'"
+    || croak "Unable to find or create script dir: '$INSTALL_DIR'"
 }
 
 
@@ -85,8 +68,8 @@ ensure_python() {
     [[ -z "$PYTHON" ]] && {
         install_python
     }
-    [[ -z "$PYTHON" ]] && die "Unable to find Python3. Try setting 'PY3_PATH' env var."
-    "$PYTHON" "$BASE/require_py_v3.py" || die "Python version too low"
+    [[ -z "$PYTHON" ]] && croak "Unable to find Python3. Try setting 'PY3_PATH' env var."
+    "$PYTHON" "$BASE/require_py_v3.py" || croak "Python version too low"
     "$PYTHON" -m ensurepip
 #    "$PYTHON" -m pip install -U pip
 }
@@ -102,7 +85,7 @@ setup_python_venv() {
         "$PIP" install -r "$BASE/requirements.txt"
     }
     V_PYTHON="$venvdir/bin/python"
-    [[ -x "$V_PYTHON" ]] || die "Something went wrong during python venv install."
+    [[ -x "$V_PYTHON" ]] || croak "Something went wrong during python venv install."
 }
 
 
@@ -121,7 +104,7 @@ mk_bashrcd() {
     _rcdir=$HOME/.bashrc.d
     _rcmsg="Include bashrcd"
     [[ -d "$_rcdir" ]] || mkdir -p "$_rcdir"
-    [[ -d "$_rcdir" ]] || die "Cant find or create rcdir: '$_rcdir'"
+    [[ -d "$_rcdir" ]] || croak "Cant find or create rcdir: '$_rcdir'"
     # Ensure "include" in bashrc
     grep -q "$_rcmsg" $_rcfile \
     || >>$_rcfile cat <<ENDHERE
@@ -146,7 +129,7 @@ install_scripts() {
         _tmpdir=$(mktemp -d)
 
         # (1) install into _tmpdir
-        cp -R "$_srcdir" "$_tmpdir"
+        rsync -r "$_srcdir/" "$_tmpdir/"
 
         # (2a) Update exec path for python scripts
         find "$_tmpdir" -type f -name '*.py' -print \
@@ -162,16 +145,14 @@ install_scripts() {
         done
 
         # (3) install from _tmpdir to _tgtdir
-        mkdir -p "$_tgtdir"
         find "$_tmpdir" -type f -print \
-        | xargs install -vbC --suffix="$TS" -t "$_tgtdir"
+        | while read; do 
+            _dest=$( echo "$REPLY" | sed -e "s?$_tmpdir?$_tgtdir?" )
+            _parent=$( dirname "$_dest" )
+            mkdir -p "$_parent"
+            install -vbC --suffix="$TS" -T "$REPLY" "$_dest"
+        done
         find "$_tmpdir" -delete
-
-#        # Log installed files
-#        find "$_tgtdir" -type f -newer "$BASE" \
-#        | while read ; do
-#            log "Installed: '$REPLY'"
-#        done
     done
 }
 
