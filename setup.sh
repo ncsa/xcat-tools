@@ -186,7 +186,6 @@ populate_script_install_map() {
 [[ $DEBUG -eq $YES ]] && set -x
 BASE=$(readlink -e $( dirname $0 ) )
 LIBS=$BASE/libs
-debug "Got BASE: '$BASE'"
 TS=$(date +%s)
 declare -A SCRIPT_INSTALL_MAP
 
