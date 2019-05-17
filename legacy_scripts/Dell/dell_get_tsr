@@ -1,0 +1,57 @@
+#!/bin/bash
+
+
+PWFILE=$HOME/.ssh/dell_ipmi_pw
+RACADM=/opt/dell/srvadmin/sbin/racadm
+
+
+function croak() {
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+function do_rac_cmd() {
+#  tmp1=$( mktemp )
+#  tmp2=$( mktemp )
+  set -x
+  $RACADM -r $ip -u root -p $pw -- $* \
+  | grep -v '[[:cntrl:]]' \
+  | grep -v 'Certificate is invalid\|Use -S option'
+#  [[ -s $tmp2 ]] && {
+#    cat $tmp2 1>&2
+#    croak "racadm fatal errors"
+#  }
+#  rm -f $tmp1 $tmp2
+}
+
+
+[[ $# -ne 1 ]] && croak "Wrong number of cmdline argurments.  Need 'hostname'."
+nodename=$1
+shift
+
+# Check racadm command installed locally
+[[ -x $RACADM ]] || croak "Can't find racadm command. Expected '$RACADM'"
+
+# Get passwd
+pw=$( head -1 $PWFILE )
+[[ -n "$pw" ]] || croak "Unable to get passwd from '$PWFILE'"
+
+# Get ipmi ip-addr
+ip=$( lsdef -t node $nodename | grep bmc=  | cut -d= -f2 )
+[[ -n "$ip" ]] || croak "Unable to get ipmi ip-addr for hostname '$nodename'"
+
+# Get service tag
+svctag=$( do_rac_cmd getsvctag )
+echo "SVCTAG: '$svctag'"
+
+# Get datetime
+datetime=$( date "+%Y%m%d%H%M%S" )
+
+# Create output filename
+outfn="${datetime}_${svctag}.zip"
+echo "OUTFN: '$outfn'"
+
+# Collect system info
+#do_rac_cmd techsupreport collect
+#do_rac_cmd techsupreport export -f "$outfn"

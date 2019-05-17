@@ -1,0 +1,140 @@
+#!/bin/bash
+
+# Global settings
+ABS=$( readlink -e "$0" )
+[[ "${#ABS}" -gt 0 ]] || { echo "Error finding program source" >&2; exit 1
+}
+PRG=$( basename "$ABS" )
+PRGDIR=$( dirname "$ABS" )
+FWBASE=/install/custom
+REMOTE_BASE=/root/fwupdate
+XDSH=/opt/xcat/bin/xdsh
+XDSHBAK=/opt/xcat/bin/xdshbak
+
+# Source common functions
+common="$PRGDIR/bash.common"
+[[ -r "$common" ]] || { echo "Error: can't source file: '$common'"; exit 1
+}
+source "$common"
+
+
+function usage {
+  cat <<ENDHERE
+
+Program:
+    $PRG
+
+Description:
+    Apply (applicable) firmware updates on the node but don't reboot.
+    Note: expects fwupdate image in /install/custom.
+    Note: see mk_fw_update script to create tgz image in /install/custom
+
+Usage:
+    $PRG {noderange | nodename [nodename ...]}
+    where:
+        nodenames must be a space separated list of valid nodenames
+        or
+        noderange must be a valid noderange expression understood by the 'nodels' command
+
+OPTIONS:
+    -h | --help
+        print help message and exit
+    -l | --logdir LOGDIR
+        store output logs in <LOGDIR>
+    -v | --verbose
+        show what is happening
+    -n | --dryrun
+        Dryrun, show what would have been done, but don't actually do it
+    -p | --pause SECS
+        Pause for SECS seconds between each node rebuild (default: 5)
+ENDHERE
+}
+
+# Cmdline option defaults
+_debug=0
+_dryrun=0
+_logdir=
+_pause=5
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -n | --dryrun)
+            _dryrun=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -l | --logdir)
+            _logdir=$( readlink -f "$2" )
+            [[ "${#_logdir}" -gt 0 ]] || die "Can't resolve path to logdir: '$2'"
+            shift
+            ;;
+        -p | --pause)
+            _pause="$2"
+            shift
+            ;;
+        -v | --vebose)
+            _debug=1
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            die "Invalid option; $1"
+            ;;
+         *)
+            ENDWHILE=1
+            break #this is an argument, don't let it get shift'd
+            ;;
+    esac
+    shift
+done
+
+# Set debug
+[[ "$_debug" -eq 1 ]] && set -x
+
+### Build nodelist from cmdline args
+if [[ $# -lt 1 ]] ; then
+    echo "Must specify nodename" 1>&2
+    exit 1
+elif [[ $# -eq 1 ]] ; then
+    nodelist=( $( nodels $1 ) )
+else
+    nodelist=( $( for a in $*; do nodels $a; done ) )
+fi
+
+
+# Create logdir
+if [[ "${#_logdir}" -gt 0 ]] ; then
+    mkdir -p "$_logdir" || die "Failed to make logdir '$_logdir'"
+else
+    _logdir=$( mktemp -d )
+fi
+
+
+### Do work for each node
+action=
+[[ "$_dryrun" -ne 0 ]] && action="echo"
+for node in "${nodelist[@]}" ; do
+    mt=$( get_machine_type "$node" )
+    fw_update="$FWBASE/${mt}fwupdate.tgz"
+    [[ -f "$fw_update" ]] || die "Can't find file: '$fw_update'"
+    tgtfn="$REMOTE_BASE/$( basename $fw_update )"
+    logfn="$_logdir/${node}.log"
+    (
+    $action copy_to_remote "$fw_update" "$node" "$tgtfn"
+    $action $XDSH "$node" -t 60 "tar -zxf $tgtfn -C $REMOTE_BASE" | $XDSHBAK
+    $action $XDSH "$node" -t 900 "cd $REMOTE_BASE && onecli/OneCli update flash --noreboot"
+    $action $XDSH "$node" -t 60 "tree $REMOTE_BASE/logs"
+    $action $XDSH "$node" -t 60 "find $REMOTE_BASE/logs -name 'OneCli*.log' -printf '%C@ %p\\n' | sort | tail -1 | cut -d' ' -f2 | xargs cat" | $XDSHBAK -bx
+    sleep "$_pause"
+    )&>"$logfn" &
+done
+wait
+
+### Collect status XML
+for node in "${nodelist[@]}" ; do
+    xmlfn="$_logdir/${node}_update_status.xml"
+    $action $XDSH "$node" -t 60 "find $REMOTE_BASE/logs -name 'Onecli-update_flash_status.xml' -printf '%C@ %p\\n' | sort | tail -1 | cut -d' ' -f2 | xargs cat" | $XDSHBAK -bx >"$xmlfn"
+done

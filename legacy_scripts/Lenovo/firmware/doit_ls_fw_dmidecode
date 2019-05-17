@@ -1,0 +1,83 @@
+#!/bin/bash
+
+# Global settings
+ABS=$( readlink -e "$0" )
+[[ "${#ABS}" -gt 0 ]] || { echo "Error finding program source" >&2; exit 1
+}
+PRG=$( basename "$ABS" )
+PRGDIR=$( dirname "$ABS" )
+
+# Source common functions
+common="$PRGDIR/bash.common"
+[[ -r "$common" ]] || { echo "Error: can't source file: '$common'"; exit 1
+}
+source "$common"
+
+
+function usage() {
+    cat <<ENDHERE
+Program:
+    $PRG
+
+Description:
+
+Options:
+    -d | --debug
+        show what is happening
+        Default: "$_debug"
+    -h | --help
+        print help message and exit
+    -H | --noHeader
+        supress header
+ENDHERE
+}
+
+# Cmdline option defaults
+_debug=0
+_remotedir=/root/
+endwhile=0
+while [[ "$#" -gt 0 ]] && [[ "$endwhile" -eq 0 ]] ; do
+    case "$1" in
+        -d | --debug)
+            _debug=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            die "Invalid option; $1"
+            ;;
+         *)
+            ENDWHILE=1
+            break #this is an argument, don't let it get shift'd
+            ;;
+    esac
+    shift
+done
+
+
+# Set debug
+[[ "$_debug" -eq 1 ]] && set -x
+
+
+# Get nodelist from cmdline
+if [[ "$#" -lt 1 ]] ; then
+    die "Must specify nodename"
+fi
+noderange="$1"
+# Validate noderange
+[[ -n "$noderange" ]] || die "noderange cannot be empty"
+/opt/xcat/bin/nodels "$noderange" &>/dev/null
+rc=$?
+if [[ "$rc" -ne 0 ]] ; then
+    die "Invalid noderange"
+fi
+
+
+# Run on nodes
+/opt/xcat/bin/xdsh "$noderange" -t 10 'dmidecode --type 0,1' \
+| python $PRGDIR/decode.py

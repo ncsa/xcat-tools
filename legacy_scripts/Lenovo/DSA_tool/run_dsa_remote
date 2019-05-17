@@ -1,0 +1,66 @@
+#!/bin/bash
+
+DEBUG=1
+BASE=/root/Lenovo_Utils/DSA_tool
+BINFILE=lnvgy_utl_dsa_dsala7d-10.3_portable_rhel7_x86-64.bin
+SCRIPTFILE=dsa_portable
+DSA_OUTDIR=/var/log/Lenovo_Support
+XDSH=/opt/xcat/bin/xdsh
+XDCP=/opt/xcat/bin/xdcp
+XDBAK=/opt/xcat/bin/xdshbak
+
+
+function die() {
+  echo "ERROR: $*"
+  exit 99
+}
+
+
+function copy_to_root() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    local srcfn="$1"
+    local fn=$( basename "$1" )
+    local tgtfn="/root/$fn"
+    local tgtnode="$2"
+    $XDCP "$tgtnode" -t 300 "$srcfn" "$tgtfn"
+    $XDSH "$tgtnode" -t 60  "chmod +x $tgtfn " | $XDBAK -c
+}
+
+
+function rm_remote_file {
+    [[ $DEBUG -eq 1 ]] && set -x
+    local tgtfn="$1"
+    local tgtnode="$2"
+    $XDSH "$tgtnode" -t 60  "rm -f $tgtfn " | $XDBAK -c
+}
+
+
+[[ $DEBUG -eq 1 ]] && set -x
+
+### Build NODERANGE from cmdline args
+if [[ $# -lt 1 ]] ; then
+    die "Must specify nodename"
+elif [[ $# -eq 1 ]] ; then
+  NODERANGE=( $( nodels $1 ) )
+else
+  NODERANGE=( $( for a in $*; do nodels $a; done ) )
+fi
+[[ ${#NODERANGE[*]} -gt 0 ]] || die "Empty noderange"
+
+tmpdir=$( mktemp -d )
+echo "OUTPUT LOGDIR: $tmpdir"
+for node in "${NODERANGE[@]}"; do
+    echo Start upgrade on $node
+    logfn="$tmpdir/$node"
+    (
+        copy_to_root $BASE/$BINFILE $node
+        copy_to_root $BASE/$SCRIPTFILE $node
+
+        ssh $node "/root/$SCRIPTFILE"
+
+        rm_remote_file "/root/$BINFILE" $node
+        rm_remote_file "/root/$SCRIPTFILE" $node
+
+    ) &>"$logfn" &
+done
+echo "OUTPUT LOGDIR: $tmpdir"

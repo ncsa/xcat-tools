@@ -1,0 +1,42 @@
+NOTE: yum pacakge mailx is required on remote server
+
+
+https://support.lenovo.com/us/en/solutions/lnvo-dsa
+
+
+
+DRIVERS
+# SCSI device info
+lsmod | grep sg
+# BCM device info
+lsmod | grep tg3
+# LSI RAID info
+lsmod | grep mptctl
+
+CMDLINE OPTIONS
+-?, -h            Display help for DSA command-line options.
+
+-b                Run in batch mode.
+
+-d <DIR>          Create output files in DIR
+                  Default is /var/log/IBM_Support
+
+-diags            Execute all non-destructive diagnostic tests.
+
+--extract <dir>   Extract DSA executable files into a designated directory
+                  (Use <dir>/collectall to launch DSA)
+
+-html <dir>       Specify HTML output directory.
+
+-ibmid            Users provides their IBM Identifier. Work with -upload.
+
+--ipmi-lan <userid:password@IP [:port]>
+                  Collect IPMI log via Out-Of-Band mode.
+
+-text             Create TEXT output files.
+
+-upload           Upload DSA output to SRSP and ISP by ecc common client C++ API.
+
+-v                Create HTML output files.
+
+-x                Do not create a compressed XML file.

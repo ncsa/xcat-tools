@@ -1,0 +1,142 @@
+#!/bin/bash
+
+# Global settings
+BASE=/root/ajl/firmware
+RUNME='
+set -x
+cd $( dirname $0 )
+onecli/OneCli update flash
+'
+PRG=$( basename "$0" )
+
+
+function get_machine_types() {
+    [[ "$_debug" -eq 1 ]] && set -x
+    local xcatgroup=lenovo
+    lsdef -t group -o $xcatgroup &>/dev/null || die "No xcat group '$xcatgroup'"
+    rinv $xcatgroup \
+    | awk '/System Model/ {split($NF,parts,/[^0-9]/); print parts[1] }' \
+    | sort -u \
+    | grep -v "^$"
+}
+
+
+function usage() {
+    cat <<ENDHERE
+
+Program:
+    $PRG
+
+Description:
+    For each machine type, check for new firmware and make fwupdate.tgz
+    If no machined types given on cmdline, attempt to extract them from all
+    known lenovo nodes.
+
+Usage:
+    $PRG [OPTIONS] [machine_type [machine_type ...]]
+
+Options:
+    -h | --help
+        print this help message and exit
+    -v | --verbose
+        Verbose mode: show what is happening
+    -n | --dryrun
+        Dryrun, show what would have been done, but don't actually do it
+    --imagedir
+        Directory to store the fwupdate images
+    --onecli
+        Path to OneCli executable (on the local machine)
+    --ostype
+        Ostype of the target machine(s)
+ENDHERE
+}
+
+# Source common functions
+common="$BASE/bash.common"
+[[ -r "$common" ]] || { echo "Fatal: can't find file: '$common'"; exit 1
+}
+source "$common"
+
+# Process cmdline options
+_debug=0
+_ostype=rhel7
+_onecli=/opt/lenovo/onecli/OneCli
+_image_dir=/install/custom
+ENDWHILE=0
+while [[ "$#" -gt 0 ]] && [[ "$ENDWHILE" -eq 0 ]] ; do 
+    case "$1" in 
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        --imagedir)
+            _image_dir="$1"
+            shift
+            ;;
+        -n | --dryrun)
+            _dryrun=1
+            ;;
+        --onecli)
+            _onecli="$1"
+            shift
+            ;;
+        --ostype)
+            _ostype="$1"
+            shift
+            ;;
+        -v | --verbose)
+            _debug=1
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            die "Invalid option '$1'"
+            ;;
+         *)
+            ENDWHILE=1
+            break #dont let case shift this argument
+            ;;
+    esac
+    shift
+done
+machine_types=( $* )
+
+# Set debug
+[[ "$_debug" -eq 1 ]] && set -x
+
+if [[ ${#machine_types[*]} -lt 1 ]] ; then
+    msg="No machine types specified on cmdline. Attempt to detect machine types?"
+    ask_yes_no "$msg" || exit 1
+    echo "Attempting to get machine types. This could take a few minutes."
+    machine_types=( $( get_machine_types ) )
+    echo "Found machine types:"
+    printf '%s\n' "${machine_types[@]}"
+    ask_yes_no || exit 0
+fi
+[[ ${#machine_types[*]} -lt 1 ]] && die "No machine types found"
+
+onecli_dir=$( dirname "$_onecli" )
+[[ -d "$onecli_dir" ]] || die "Failed to find onecli_dir; '$onecli_dir' not valid"
+
+for mt in "${machine_types[@]}"; do
+    image_name="${mt}fwupdate.tgz"
+    image_fullpath="$_image_dir/$image_name"
+    if [[ -e $image_fullpath ]] ; then
+        msg="Target file '$image_fullpath' already exists. Okay to rebuild?"
+        ask_yes_no "$msg" || continue
+        timestamp=$( stat -c%Z $image_fullpath )
+        mv $image_fullpath ${image_fullpath}.$timestamp
+    fi
+    tmpdir=$( mktemp -d )
+    # xcat genesis kernel will look for runme.sh
+    cd $tmpdir \
+    && echo "$RUNME" >./runme.sh \
+    && chmod +rwx ./runme.sh \
+    && $_onecli update acquire --mt "$mt" --ostype "$_ostype" \
+    && find logs -delete \
+    && cp -a "$onecli_dir" . \
+    && tar czf "$image_fullpath" * \
+    && cd -
+    rm -rf "$tmpdir"
+done

@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Global settings
+ABS=$( readlink -e "$0" )
+[[ "${#ABS}" -gt 0 ]] || { echo "Error finding program source" >&2; exit 1
+}
+PRG=$( basename "$ABS" )
+PRGDIR=$( dirname "$ABS" )
+
+# Source common functions
+common="$PRGDIR/bash.common"
+[[ -r "$common" ]] || { echo "Error: can't source file: '$common'"; exit 1
+}
+source "$common"
+
+
+function usage() {
+    cat <<ENDHERE
+Program:
+    $PRG
+
+Description:
+
+Options:
+    -d | --debug
+        show what is happening
+        Default: "$_debug"
+    -h | --help
+        print help message and exit
+    -l | --logdir
+        Create one file per node at <logdir>/<nodename>
+        NOTE: If logdir is not specified, then print on stdout after
+        piping output through "xdshbak -c"
+        Default: "$_logdir"
+    -r | --remotedir
+        Where to install Lenovo OneCli utility on target node
+        Default: "$_remotedir"
+ENDHERE
+}
+
+# Cmdline option defaults
+_debug=0
+_logdir=
+_remotedir=/root/Lenovo_Utils/OneCLI
+endwhile=0
+while [[ "$#" -gt 0 ]] && [[ "$endwhile" -eq 0 ]] ; do
+    case "$1" in
+        -d | --debug)
+            _debug=1
+            ;;
+        -h | --help)
+            usage
+            exit 0
+            ;;
+        -l | --logdir)
+            _logdir=$( readlink -f "$2" )
+            [[ "${#_logdir}" -gt 0 ]] || die "Can't resolve path to logdir: '$2'"
+            shift
+            ;;
+        -r | --remotedir)
+            _remotedir="$2"
+            shift
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            die "Invalid option; $1"
+            ;;
+         *)
+            ENDWHILE=1
+            break #this is an argument, don't let it get shift'd
+            ;;
+    esac
+    shift
+done
+
+
+# Set debug
+[[ "$_debug" -eq 1 ]] && set -x
+
+# Get nodelist from cmdline
+if [[ "$#" -lt 1 ]] ; then
+    die "Must specify nodename"
+elif [[ $# -eq 1 ]] ; then
+    nodelist=( $( nodels $1 ) )
+else
+    nodelist=( $( for a in $*; do nodels $a; done ) )
+fi
+
+# Determine output style
+use_stdout=1
+if [[ "${#_logdir}" -gt 0 ]] ; then
+    use_stdout=0
+    mkdir -p "$_logdir" || die "Failed to make logdir '$_logdir'"
+else
+    _logdir=$( mktemp -d )
+fi
+
+# Do work per node
+for node in "${nodelist[@]}"; do
+    logfn="$_logdir/$node"
+    (
+    copy_to_remote "$PRGDIR/ls_fw_versions" "$node" "$_remotedir/ls_fw_versions"
+    copy_to_remote "$PRGDIR/parse_fw_versions.awk" "$node" "$_remotedir/parse_fw_versions.awk"
+    /opt/xcat/bin/xdsh "$node" -t 10 "chmod +x '$_remotedir/ls_fw_versions'"
+    /opt/xcat/bin/xdsh "$node" -t 120 "$_remotedir/ls_fw_versions "
+    ) &>"$logfn" &
+done
+wait
+
+# Cleanup output
+if [[ "$use_stdout" -gt 0 ]] ; then
+    find "$_logdir" -type f -exec cat {} \; \
+    | /opt/xcat/bin/xdshbak -c
+    find "$_logdir" -delete
+else
+    find "$_logdir" -type f -print \
+    | while read; do 
+        src="$REPLY"
+        tmp="${src}.tmp"
+        cp "$REPLY" "$tmp"
+        <"$tmp" /opt/xcat/bin/xdshbak | tail -n+3 >"$src"
+        rm "$tmp"
+    done
+fi

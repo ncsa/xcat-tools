@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# Global settings
+ABS=$( readlink -e "$0" )
+[[ "${#ABS}" -gt 0 ]] || { echo "Error finding program source" >&2; exit 1
+}
+PRG=$( basename "$ABS" )
+PRGDIR=$( dirname "$ABS" )
+
+# Source common functions
+common="$PRGDIR/bash.common"
+[[ -r "$common" ]] || { echo "Error: can't source file: '$common'"; exit 1
+}
+source "$common"
+
+
+function build_runimage_url {
+    [[ $VERBOSE -eq 1 ]] && set -x
+    local node=$1
+    local mt=$( get_machine_type $node )
+    local fn=/install/custom/${mt}fwupdate.tgz
+    [[ -f $fn ]] || die "FW update file not found, expected '$fn'"
+    echo "http://10.142.181.2/install/custom/${mt}fwupdate.tgz"
+}
+
+
+function usage {
+  cat <<ENDHERE
+
+Program:
+    $PRG
+
+Description:
+    Apply (applicable) firmware updates on the node but don't reboot.
+    Note: expects fwupdate image in /install/custom.
+    Note: see mk_fw_update script to create tgz image in /install/custom
+
+Usage:
+    $PRG {noderange | nodename [nodename ...]}
+    where:
+        nodenames must be a space separated list of valid nodenames
+        or
+        noderange must be a valid noderange expression understood by the 'nodels' command
+
+OPTIONS:
+  -h    print help message and exit
+  -v    show what is happening
+  -n    Dryrun, show what would have been done, but don't actually do it
+  -p S  Pause for S seconds between each node rebuild (default: 5)
+ENDHERE
+}
+
+ENDWHILE=0
+VERBOSE=0
+DRYRUN=0
+PAUSE=5
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+           -h)  usage
+                exit 0;;
+        -v|-d)  VERBOSE=1; DEBUG=1;;
+           -n)  DRYRUN=1;;
+           -p)  PAUSE=$2;
+                shift;;
+           --)  ENDWHILE=1;;
+           -*)  die "Invalid option; $1";;
+            *)  ENDWHILE=1; break;;
+    esac
+    shift
+done
+
+[[ $VERBOSE -eq 1 ]] && set -x
+
+### Build nodelist from cmdline args
+if [[ $# -lt 1 ]] ; then
+    echo "Must specify nodename" 1>&2
+    exit 1
+elif [[ $# -eq 1 ]] ; then
+    nodelist=( $( nodels $1 ) )
+else
+    nodelist=( $( for a in $*; do nodels $a; done ) )
+fi
+
+
+### Do work for each node
+action=
+[[ $DRYRUN -ne 0 ]] && action="echo"
+for n in "${nodelist[@]}" ; do
+    runimage=$( build_runimage_url $n )
+    $action nodeset $n "runimage=${runimage}" \
+    || die "nodeset returned nonzero ... check errors above for details"
+    $action rsetboot $n net \
+    || die "rsetboot returned nonzero ... check errors above for details"
+    $action rpower $n boot \
+    || die "rpower returned nonzero ... check errors above for details"
+    if [[ $DRYRUN -eq 0 ]] ; then
+        [[ $VERBOSE -eq 1 ]] && set +x
+        echo -n "Pause $PAUSE "
+        for i in $( seq $PAUSE ) ; do
+            echo -n "."
+            sleep 1 >/dev/null
+        done
+        echo
+        [[ $VERBOSE -eq 1 ]] && set -x
+    fi
+done

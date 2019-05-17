@@ -1,0 +1,10 @@
+# Legacy scripts
+
+Files here are one-off tools that have not been merged into the main 
+set of admin scripts yet. Additional work is needed to:
+1. Verify correctness
+1. Verify updatedness (that it works with recent versions of xcat)
+1. Verify relevance (it is still needed and hasn't been replaced by something else)
+1. Simplify by using functions in `xcat-tools/libs/`
+1. Genericize by removing any site specific names, paths, etc.
+1. Verify proper install by `setup.sh`.

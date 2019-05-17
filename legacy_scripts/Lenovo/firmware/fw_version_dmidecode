@@ -1,0 +1,25 @@
+#!/bin/bash
+
+BIOS=$( 
+dmidecode --type 0 \
+| awk '
+    /Version: / {split($0, parts, /[[\]]/); CODE=parts[2]; next}
+    /BIOS Revision: / {BIOS=$NF; next}
+    /Firmware Revision: / {FW=$NF; next}
+    END {printf("%s,%s,%s", CODE, BIOS, FW) }
+'
+)
+
+MT=$(
+dmidecode --type 1 \
+| awk '
+    /Product Name: / {split($0, parts, /[[\]]/); MT=parts[2]; next}
+    /Serial Number:/ {SN=$NF; next}
+    END {printf("%s,%s", SN, MT)}
+'
+)
+
+# OUTPUT FORMAT
+# Machine-Type BIOS-Firmware-Ver-Codename BIOS-Firmware-Ver-Number
+echo "Serial Number,Machine Type,BIOS Version Codename,BIOS Version Number,FW Version"
+echo "$MT,$BIOS"

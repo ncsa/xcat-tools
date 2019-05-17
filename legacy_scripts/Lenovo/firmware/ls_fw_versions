@@ -1,0 +1,104 @@
+#!/bin/bash
+
+DEBUG=0
+FORCE=0
+BASE=/root/Lenovo_Utils/OneCLI
+LOGDIR=$BASE/logs
+AWKFN=$BASE/parse_fw_versions.awk
+XCAT_MASTER=10.142.181.2
+XCAT_WEB_PATH=/install/custom
+ONECLI_DEFAULT_LOCATION=/opt/lenovo/onecli/OneCli
+ONECLI_MANUAL_LOCATION=$BASE/bin/OneCli
+ONECLI_MANUAL_TGZ=lnvgy_utl_lxce_onecli01a-2.2.3_rhel7_x86-64.tgz
+ONECLI=$ONECLI_DEFAULT_LOCATION
+
+
+function die() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    echo "ERROR: $*" 1>&2
+    exit 99
+}
+
+
+function check_dependencies() {
+    local required_pkgs=( usbutils )
+    local p
+    for p in "${required_pkgs[@]}"; do
+        rpm -q "$p" &>/dev/null || die "Missing pkg '$p'"
+    done
+}
+
+
+function setup_base_dirs() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    mkdir -p $BASE
+    mkdir -p $LOGDIR
+}
+
+
+function check_onecli() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    [[ -x $ONECLI ]] && return
+    if [[ -x $ONECLI_MANUAL_LOCATION ]] ; then
+        ONECLI=$ONECLI_MANUAL_LOCATION
+        return
+    fi
+    local bindir=$( dirname $ONECLI_MANUAL_LOCATION )
+    rm -rf $bindir
+    mkdir -p $bindir
+    curl -O http://$XCAT_MASTER/$XCAT_WEB_PATH/$ONECLI_MANUAL_TGZ
+    tar -zxf $ONECLI_MANUAL_TGZ -C $bindir
+    ONECLI=$ONECLI_MANUAL_LOCATION
+}
+
+
+function find_latest_log() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    find $LOGDIR -ctime -7 -name 'OneCli*.log' | sort | tail -1
+}
+
+
+function parse_log() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    local logfile=$1
+    [[ -z "$logfile" ]] && die "logfile required to parse_log"
+    awk -f $AWKFN $logfile
+}
+
+
+function mk_fw_log() {
+    [[ $DEBUG -eq 1 ]] && set -x
+    local tmpfn=$( mktemp )
+    $ONECLI update scan --output $LOGDIR &>$tmpfn
+    [[ $DEBUG -eq 1 ]] && cat $tmpfn
+    rm -f $tmpfn
+}
+
+
+while getopts ":df" opt; do
+    case $opt in
+         d) DEBUG=1 ;;
+         f) FORCE=1 ;;
+        \?) die "Invalid option: '-$OPTARG'" ;;
+         :) die "Option '-$OPTARG' requires an argument." ;;
+    esac
+done
+shift $((OPTIND-1))
+
+[[ $DEBUG -eq 1 ]] && set -x
+
+check_dependencies
+setup_base_dirs
+check_onecli
+
+# Check for recent log
+logfn=$( find_latest_log )
+if [[ -z "$logfn" || $FORCE -eq 1 ]] ; then
+    # No recent logs, make a new one
+    mk_fw_log
+    # Check for recent log or exit
+    logfn=$( find_latest_log )
+    [[ -z "$logfn" ]] && die "Scan firmware versions failed"
+fi
+
+parse_log $logfn

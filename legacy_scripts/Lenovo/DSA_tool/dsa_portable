@@ -1,0 +1,47 @@
+#!/bin/bash
+
+DEBUG=0
+BINFILE=/root/lnvgy_utl_dsa_dsala7d-10.3_portable_rhel7_x86-64.bin
+OUTDIR=/var/log/Lenovo_Support
+thishost=$(hostname)
+EMAIL_SUBJ="DSA log from $thishost"
+EMAIL_RECIPIENTS=( "admins@company" )
+
+function die() {
+  echo "ERROR: $*"
+  exit 99
+}
+
+
+function check_dependencies() {
+    local required_pkgs=( mailx )
+    local p
+    for p in "${required_pkgs[@]}"; do
+        rpm -q "$p" &>/dev/null || die "Missing pkg '$p'"
+    done
+}
+
+
+function send_file_via_email() {
+    local fn="$1"
+    [[ -f "$fn" ]] || die "send_file_via_email: file not found '$fn'"
+    echo "DSA log file attached" \
+    | /usr/bin/mailx -s "$EMAIL_SUBJ" -a "$fn" "${EMAIL_RECIPIENTS[@]}"
+}
+
+[[ $DEBUG -eq 1 ]] && set -x
+
+check_dependencies
+
+if [[ -e $OUTDIR ]] ; then
+    find $OUTDIR -delete || die "Unable to rm output dir: '$OUTDIR'"
+fi
+
+# run dsa collection
+$BINFILE -b
+
+# find dsa output file
+dsa_file=$( ls -tr $OUTDIR/*.xml.gz | tail -1 )
+[[ -f "$dsa_file" ]] || die "No dsa output file found"
+
+send_file_via_email "$dsa_file"

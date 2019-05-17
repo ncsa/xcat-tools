@@ -1,0 +1,16 @@
+*****************************************
+NOTE: Use scripts in /root/ajl/firmware/
+      Files left here are from initial research and retained for posterity
+      ...for now
+*****************************************
+
+
+https://support.lenovo.com/us/en/solutions/LNVO-TCLI
+
+https://download.lenovo.com/servers_pdf/Lenovo_XClarity_Essentials_OneCLI_User_Guide_v2.1.0.pdf
+
+Lenovo XClarity Essentials OneCLI (OneCLI)
+
+Overview
+
+Lenovo XClarity Essentials OneCLI is a collection of several command line applications, which can be used to configure the server, collect service data for the server, update firmware and device drivers, and perform power-management functions on the server. Lenovo XClarity Essentials OneCLI (OneCLI) is comprised of individual ToolsCenter application modules that are easily updated. Starting from 1.2.0, Lenovo XClarity Essentials OneCLI (OneCLI) also support inventory on some ThinkServer systems.

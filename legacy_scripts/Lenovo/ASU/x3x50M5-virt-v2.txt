@@ -1,0 +1,39 @@
+set IMM.FanSpeedControl "BMC"
+set OperatingModes.ChooseOperatingMode "Custom Mode"
+set Processors.TurboMode Enable
+set Processors.CPUP-stateControl Autonomous
+set Processors.C-States Disable
+set Processors.C1EnhancedMode Disable
+set Processors.Hyper-Threading Enable
+set Processors.IntelVirtualizationTechnology Enable
+set Processors.HardwarePrefetcher Enable
+set Processors.AdjacentCachePrefetch Enable
+set Processors.DCUStreamerPrefetcher Enable
+set Processors.DCUIPPrefetcher Enable
+set Processors.DCA Enable
+set Processors.EnergyEfficientTurbo Disable
+set Processors.UncoreFrequencyScaling Enable
+set Processors.MONITORMWAIT Disable
+set Processors.QPILinkDisable "Enable All Links"
+set Processors.CODPreference Disable
+set Processors.SnoopPreference "HS with HD+OSB"
+set Processors.PerCoreP-state Enable
+set Processors.CoresinCPUPackage All
+set Processors.QPILinkFrequency "Max Performance"
+set Processors.TurboLimits "Full turbo uplift"
+
+set Power.ActiveEnergyManager "Capping Disabled"
+set Power.PowerPerformanceBias "Platform Controlled"
+set Power.PlatformControlledType "Maximum Performance"
+set Power.WorkloadConfiguration "Balanced"
+set Power.LenovoEfficiencyMode Disable
+set Power.ZeroOutput "Advance Mode"
+
+set Memory.MemoryMode Independent
+set Memory.Sparing Disable
+set Memory.MemorySpeed "Max Performance"
+set Memory.MemoryPowerManagement"Disable"
+set Memory.SocketInterleave NUMA
+set Memory.PatrolScrub Enable
+set Memory.MemoryDataScrambling Enable
+set Memory.PagePolicy Adaptive

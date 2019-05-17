@@ -1,0 +1,3 @@
+ssh <NODE-IMM> "loaddefault uefi"
+
+pasu -b Lenovo_UEFI_settings_set.bat <NODERANGE>
