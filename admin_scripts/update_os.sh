@@ -13,7 +13,7 @@ PAUSE=10
 # Import libs
 imports=( logging build_nodelist )
 for f in "${imports[@]}"; do
-    local _srcfn="${LIB}/${f}.sh"
+    _srcfn="${LIB}/${f}.sh"
     [[ -f "$_srcfn" ]] || {
         echo "Failed to find lib file '$_srcfn'"
         exit 1
