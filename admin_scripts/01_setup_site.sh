@@ -56,6 +56,7 @@ clustersite:
     fowarders=$_forwarders
     master=$MASTERIP
     nameservers=$_forwarders
+    precreatemypostscripts=1
     puppetmaster=$_puppetmaster
 ENDSTANZA
 }
