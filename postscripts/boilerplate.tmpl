@@ -1,0 +1,79 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              <<<SHORT DESCRIPTION HERE>>>
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+DEFAULT_SLEEPTIME=10m
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+    Sleep for given amount of time ('$DEFAULT_SLEEPTIME' by default)
+    Useful for debugging by pausing postscripts sequence
+Usage:
+    $PRG NUMBER[SUFFIX]
+
+Parameters:
+    NUMBER[SUFFIX]  A valid string to pass to the "sleep" command
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+SLEEPVAL=$DEFAULT_SLEEPTIME
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -h)
+            usage
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            echo "Invalid option '$1'"
+            exit 1
+            ;;
+         *)
+            ENDWHILE=1
+            break
+            ;;
+    esac
+    shift
+done
+[[ $# -gt 0 ]] && {
+    SLEEPVAL="$1"
+    shift
+}
+
+#
+# DO WORK
+#
+sleep "$SLEEPVAL"
+

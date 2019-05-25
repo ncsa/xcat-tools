@@ -1,23 +1,28 @@
 #/bin/bash
 
-#-------------------------------------------------------------------------------
-#=head1  kerberos_keytab
-#=head2  Install pre-existing kerberos keytabs if they exist
-#      Usage:
-#      1. use $PUPPETSERVER or $MASTER as the puppet server
-#            updatenode <noderange> -P "kerberos_keytab"
+###
+# Description: Custom postscript for xcat.
+#              Re-install kerberos keytab (if preciously backed up)
+# Source: https://github.com/ncsa/xcat-tools
+###
+
 #
-# written 20181025 wglick for NCSA
-#=cut
-#-------------------------------------------------------------------------------
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
-logger -t xcat -p local4.info "running kerberos_keytab on OS $os on node $NODE"
 
-
+#
+# DEFAULT SETTINGS
+#
 KEYTABDIR=/etc
 BKUP_KEYTABDIR=/install/files/compute/var/lib/kerberos/keytab
 
 
+#
+# FUNCTIONS
+#
 logr() {
   logger -t xcat -p local4.info "$*"
   echo "$*"
@@ -31,8 +36,9 @@ croak() {
 }
 
 
-#logger -t xcat -p local4.info "copying kerberos keytab from the master."
-
+#
+# DO WORK
+#
 logr "ensure $MASTER:$INSTALLDIR is mounted"
 /xcatpost/mountinstall || exit 2
 #ls -R /install

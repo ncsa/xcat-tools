@@ -1,31 +1,37 @@
-#/bin/bash
+#!/bin/bash
 
-#-------------------------------------------------------------------------------
-#=head1  puppet_certs
-#=head2  Install puppet-agent RPM and configure pre-existing puppet client SSL
-#        certs, if they exist.
-#      Usage:
+###
+# Description: Custom postscript for xcat.
+#   Install puppet-agent RPM and configure pre-existing puppet client SSL
+#   certs, if they exist.
+#   Usage:
 #      1. use $PUPPETMASTER or $MASTER as the puppet server
 #            updatenode <noderange> -P "puppet_certs"
 #      Note: It is assumed that appropriate yum repos are already configured for
 #            installing puppet agent.
 #
-# 20160602 aloftus for NCSA - initial version
-# 20190122 rundall for NCSA - yum install puppet
-#                             previous version assumed puppet was pre-installed
-#                             by xcat (via otherpkgs), which is no longer the
-#                             case
-#=cut
-#-------------------------------------------------------------------------------
+# Source: https://github.com/ncsa/xcat-tools
+###
 
-logger -t xcat -p local4.info "running puppet_certs on OS $os on node $NODE"
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
+
+#
+# DEFAULT SETTINGS
+#
 PUPPET=/opt/puppetlabs/bin/puppet
 BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
 CA=ca.pem
 AGENTLOG=/var/log/puppet/agent.boottime.log
 
 
+#
+# FUNCTIONS
+#
 logr() {
   logger -t xcat -p local4.info "$*"
   echo "$*"
@@ -64,6 +70,9 @@ puppet_agent() {
 }
 
 
+#
+# DO WORK
+#
 logr "install puppet-agent RPM via Yum"
 yum -y install puppet-agent
 

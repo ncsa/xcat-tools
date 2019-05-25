@@ -1,17 +1,20 @@
 #!/bin/bash
 # IBM(c) 2014 EPL license http://www.eclipse.org/legal/epl-v10.html
 
-#-------------------------------------------------------------------------------
-#=head1  confignics
-#=head2  Used on Linux only. Config the Ethernet or InfiniBand adapters on the nodes
+
+###
+# Description: Custom postscript for xcat.
+#              Modified to work for Dell
+# Source: https://github.com/ncsa/xcat-tools
+###
+
 #
-#  You can run the following commands on MN:
-#       updatenode noderange confignics
-#       updatenode noderange "confignics -s" (configures the installation nic by default and no need to configure the install nic in nics table)
+# PREP
 #
-#
-#=cut
-#-------------------------------------------------------------------------------
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
 
 
 if [ "$(uname -s|tr 'A-Z' 'a-z')" = "linux" ];then

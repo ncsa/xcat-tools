@@ -144,8 +144,8 @@ install_scripts() {
             sed -i -e "s?$_pattern?$INSTALL_DIR?" "$REPLY"
         done
 
-        # (3) install from _tmpdir to _tgtdir
-        find "$_tmpdir" -type f -print \
+        # (3) install from _tmpdir to _tgtdir (ignore tmpl files)
+        find "$_tmpdir" -type f ! -iname '*.tmpl' -print \
         | while read; do 
             _dest=$( echo "$REPLY" | sed -e "s?$_tmpdir?$_tgtdir?" )
             _parent=$( dirname "$_dest" )
