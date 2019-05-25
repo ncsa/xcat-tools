@@ -1,7 +1,7 @@
 # xcat-tools
 Useful tools for xCAT
 
-# Installation
+# Installation / Update
 1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh | bash`
 
 |||
