@@ -178,7 +178,7 @@ populate_script_install_map() {
           [cron_scripts]="$INSTALL_DIR/cron_scripts" \
                 [extras]="$INSTALL_DIR/extras" \
                   [libs]="$INSTALL_DIR/libs" \
-           [postscripts]="/install/postscripts" \
+           [postscripts]="/install/postscripts/custom" \
     )
 }
 
