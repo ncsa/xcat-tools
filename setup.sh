@@ -2,7 +2,8 @@
 
 YES=0
 NO=1
-DEBUG=$NO
+#DEBUG=$NO
+DEBUG=$YES
 VERBOSE=$YES
 
 
@@ -159,10 +160,32 @@ install_scripts() {
 
 mk_cron_jobs() {
     [[ $DEBUG -eq $YES ]] && set -x
-    crondir="${SCRIPT_INSTALL_MAP[cron_scripts]}"
-    find "$crondir" -type f -print \
+    local _crondir="${SCRIPT_INSTALL_MAP[cron_scripts]}"
+    find "$_crondir" -type f -print \
     | while read ; do
         mk_cron "$REPLY" '@daily'
+    done
+}
+
+
+symlink_postscripts() {
+    # If a custom postscript has the same name as an xcat-provided postscript,
+    # then 
+    # 1. rename the xcat original and
+    # 2. create a symlink to the custom script
+    [[ $DEBUG -eq $YES ]] && set -x
+    local _psdir=/install/postscripts
+    local _custom_psdir="${SCRIPT_INSTALL_MAP[postscripts]}"
+    local _custom_ps_path _fn _orig_path
+    find "$_custom_psdir" -type f -print \
+    | while read; do
+        _custom_ps_path="$REPLY"
+        _fn=$(basename "$_custom_ps_path")
+        _orig_path="$_psdir/$_fn"
+        [[ -f "$_orig_path" && ! -L "$_orig_path" ]] && {
+            mv "$_orig_path" "${_orig_path}.$TS"
+            ln -s "$_custom_ps_path" "$_orig_path"
+        }
     done
 }
 
@@ -217,3 +240,5 @@ mk_bashrcd
 install_scripts
 
 mk_cron_jobs
+
+symlink_postscripts
