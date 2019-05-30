@@ -11,6 +11,23 @@ Useful tools for xCAT
 || Install also touches `$HOME/.bashrc` and `$HOME/.bashrc.d` |
 
 # Usage
+## Postscripts
+Postscripts are installed into `/install/postscripts/custom`.
+
+Add these to the xCAT postscripts table using the path `custom/<SCRIPTNAME>` ... 
+EXCEPT for those noted below
+
+EXCEPTION:
+For postscripts that have the same name as an xCAT-provided postscript, the original (file in 
+`/install/postscripts`) will be moved aside (renamed with a timestamp suffix) and
+a symlink created that points to the custom copy (file in `/install/postscripts/custom`.)
+When specifying these scripts in the postscripts table, do NOT include the `custom/` path.
+Specify them as normal, using just the scriptname itself. (The original scripts expect
+to be found and run from `/install/postscripts` and expect to source and include other
+scripts from that directory. The symlink will allow xcat to find the script in the expected
+location.)
+
+# Admin Scripts
 ## tabdump / td
 Align tabdump output by column
 ```

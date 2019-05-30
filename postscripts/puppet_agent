@@ -1,0 +1,130 @@
+#!/bin/bash
+
+###
+# Description: Prepare and start puppet agent
+#   0. Assume appropriate yum repos are already configured
+#   1. Install puppet-agent RPM
+#   2. Re-install, if exist, pre-existing puppet SSL certs
+
+# Usage:
+#      1. use $PUPPETMASTER or $MASTER as the puppet server
+#            updatenode <noderange> -P "puppet_certs"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+PUPPET=/opt/puppetlabs/bin/puppet
+BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
+CA=ca.pem
+AGENTLOG=/var/log/xcat/puppet_agent.log
+
+
+#
+# FUNCTIONS
+#
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+set_server() {
+    server=$MASTER
+    [[ -n "$PUPPETMASTER" ]] && server=$PUPPETMASTER
+    logr "setting server set to '$server' in local config"
+    $PUPPET config set server "$server" --section agent
+    logr "verify server setting is saved in local config"
+    $PUPPET config print server --section agent
+}
+
+
+puppet_agent_runonce() {
+    local _e=$1
+    local _env
+    [[ -n "$_e" ]] && _env="--environment $_e"
+    local _logdir=$( dirname $AGENTLOG )
+    mkdir -p $_logdir
+    echo >> $AGENTLOG
+    date >> $AGENTLOG
+    echo "About to run puppet agent in '$_e' environment" >> $AGENTLOG
+    set -x
+    $PUPPET agent --test --logdest $AGENTLOG $_env
+    set +x
+}
+
+
+puppet_agent_enable() {
+    $PUPPET resource service puppet ensure=running
+    $PUPPET resource service puppet enable=true
+}
+
+
+restore_certs() {
+    logr "copying puppet certs from the master."
+    SSLDIR=$( $PUPPET config print ssldir )
+    set -x
+    for d in certs public_keys private_keys; do
+        pemlist=( $( ls $BKUP_SSLDIR/$d/*${NODE}*.pem ) )
+        [[ ${#pemlist[@]} -gt 1 ]] && croak "Multiple PEM files found for this host"
+        [[ -f "${pemlist[0]}" ]] && {
+            mkdir -p $SSLDIR/$d
+            cp "${pemlist[0]}" $SSLDIR/$d/.
+        }
+    done
+    cp $BKUP_SSLDIR/certs/$CA  $SSLDIR/certs/.
+    ls -R $SSLDIR
+    set +x
+}
+
+
+#
+# DO WORK
+#
+
+# Allow for custom environment to be specified on cmdline
+# (this won't do anything if using ENC at your site)
+[[ $# -gt 0 ]] && {
+    REQUESTED_ENV="$1"
+    shift
+}
+
+logr "install puppet-agent RPM via Yum"
+yum -y install puppet-agent
+
+logr "ensure $MASTER:$INSTALLDIR is mounted"
+/xcatpost/mountinstall || croak 'mountinstall returned non-zero'
+
+restore_certs
+
+# TODO: this should be optional to allow for default hostname 'puppet' to be
+# used if DNS is configured properly.
+set_server
+
+logr "puppet agent first run"
+puppet_agent_runonce $REQUESTED_ENV
+sleep 5
+logr "puppet agent second run"
+puppet_agent_runonce $REQUESTED_ENV
+
+puppet_agent_enable
+
+logr "end of puppet_certs on OS '$os' on node '$NODE'"
+
+exit 0
