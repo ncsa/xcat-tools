@@ -1,0 +1,94 @@
+#!/bin/bash
+
+###
+# Description: Add a prefix and/or suffix to the hostname.
+#              Update /etc/hostname with the new hostname.
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$0' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+    Add a prefix to the hostname.
+    Update /etc/hostname with the new hostname.
+Usage:
+    $PRG [OPTIONS]
+
+Options:
+    -p PFX  String to be prepended to hostname.
+    -s SFX  String to be appended to hostname.
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -h)
+            usage
+            ;;
+        -p)
+            shift
+            PFX="$1"
+            ;;
+        -s)
+            shift
+            SFX="$1"
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            echo "Invalid option '$1'"
+            exit 1
+            ;;
+         *)
+            ENDWHILE=1
+            break
+            ;;
+    esac
+    shift
+done
+
+#
+# DO WORK
+#
+[[ -z "$PFX" && -z "$SFX" ]] && {
+    logr 'No affixes provided. Exiting.'
+    exit 0
+}
+
+FULLNODENAME="${PFX}${NODE}${SFX}"
+
+logr "Writing hostname '$FULLNODENAME' to /etc/hostname"
+echo "$FULLNODENAME" > /etc/hostname
+
+logr "Setting hostname to '$FULLNODENAME'"
+hostname $FULLNODENAME
+
+logr "Set hostname successfully"
