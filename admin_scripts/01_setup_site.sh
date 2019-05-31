@@ -53,7 +53,7 @@ clustersite:
     objtype=site
     auditskipcmds=ALL
     domain=$DOMAIN
-    fowarders=$_forwarders
+    forwarders=$_forwarders
     master=$MASTERIP
     nameservers=$_forwarders
     precreatemypostscripts=1
@@ -120,9 +120,3 @@ if [[ $DRYRUN -eq $YES ]] ; then
 else
     mk_stanza | chdef -z
 fi
-#cmd='chdef -z'
-#if [[ $DRYRUN -eq $YES ]] ; then
-#    cmd='echo'
-#fi
-#mk_stanza | $cmd
-##mk_stanza
