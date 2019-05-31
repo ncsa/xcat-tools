@@ -71,8 +71,10 @@ puppet_agent_runonce() {
 
 
 puppet_agent_enable() {
+    logr "Enabling puppet agent service"
     $PUPPET resource service puppet ensure=running
     $PUPPET resource service puppet enable=true
+    logr "Enabling puppet agent service ... OK"
 }
 
 
@@ -83,14 +85,21 @@ restore_certs() {
     for d in certs public_keys private_keys; do
         pemlist=( $( ls $BKUP_SSLDIR/$d/*${NODE}*.pem ) )
         [[ ${#pemlist[@]} -gt 1 ]] && croak "Multiple PEM files found for this host"
-        [[ -f "${pemlist[0]}" ]] && {
+        local _pemfile="${pemlist[0]}"
+        logr "Found PEM file '$_pemfile'"
+        if [[ -f "$_pemfile" ]] ; then
             mkdir -p $SSLDIR/$d
-            cp "${pemlist[0]}" $SSLDIR/$d/.
-        }
+            logr "copying cert '$_pemfile'"
+            cp "$_pemfile" $SSLDIR/$d/.
+        else
+            croak "File '$_pemfile' failed '-f' file check"
+        fi
     done
+    logr "copying CA cert '$BKUP_SSLDIR/certs/$CA'"
     cp $BKUP_SSLDIR/certs/$CA  $SSLDIR/certs/.
     ls -R $SSLDIR
     set +x
+    logr "copying puppet certs from the master ... OK"
 }
 
 
@@ -107,9 +116,11 @@ restore_certs() {
 
 logr "install puppet-agent RPM via Yum"
 yum -y install puppet-agent
+logr "install puppet-agent RPM via Yum ... OK"
 
 logr "ensure $MASTER:$INSTALLDIR is mounted"
 /xcatpost/mountinstall || croak 'mountinstall returned non-zero'
+logr "ensure $MASTER:$INSTALLDIR is mounted ... OK"
 
 restore_certs
 
@@ -119,12 +130,14 @@ set_server
 
 logr "puppet agent first run"
 puppet_agent_runonce $REQUESTED_ENV
+logr "puppet agent first run ... OK"
 sleep 5
 logr "puppet agent second run"
 puppet_agent_runonce $REQUESTED_ENV
+logr "puppet agent second run ... OK"
 
 puppet_agent_enable
 
-logr "end of puppet_certs on OS '$os' on node '$NODE'"
+logr "end of puppet_certs on OS '$OSVER' on node '$NODE'"
 
 exit 0

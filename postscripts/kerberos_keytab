@@ -1,4 +1,4 @@
-#/bin/bash
+#!/bin/bash
 
 ###
 # Description: Custom postscript for xcat.
@@ -41,21 +41,31 @@ croak() {
 #
 logr "ensure $MASTER:$INSTALLDIR is mounted"
 /xcatpost/mountinstall || exit 2
+logr "ensure $MASTER:$INSTALLDIR is mounted ... OK"
 #ls -R /install
 
 logr "copying kerberos keytab from the master."
 set -x
-if [[ -f $BKUP_KEYTABDIR/${NODE}.krb5.keytab ]]; then
-  cp $BKUP_KEYTABDIR/${NODE}.krb5.keytab $KEYTABDIR/krb5.keytab
-  chmod 600 $KEYTABDIR/krb5.keytab
-  chown root.root $KEYTABDIR/krb5.keytab
+srcfn="$BKUP_KEYTABDIR/${NODE}.krb5.keytab"
+tgtfn="$KEYTABDIR/krb5.keytab"
+if [[ -f "$srcfn" ]]; then
+  logr "found keytab file '$srcfn'"
+  cp "$srcfn" "$tgtfn"
+  chmod 600 "$tgtfn"
+  chown root.root "$tgtfn"
 fi
 
+if [[ -f "$tgtfn" ]] ; then
+    logr "Successfully installed keytab '$tgtfn'"
+else
+    logr "Keytab file not installed"
+fi
 ls -R $KEYTABDIR/krb5.keytab
 strings $KEYTABDIR/krb5.keytab | grep -i '${NODE}'
 set +x
+logr "copying kerberos keytab from the master ... OK"
 
 
-logr "end of kerberos_keytab on OS $os on node $NODE"
+logr "end of kerberos_keytab on OS '$OSVER' on node '$NODE'"
 
 exit 0
