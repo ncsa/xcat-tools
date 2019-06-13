@@ -14,6 +14,7 @@ for f in "${imports[@]}"; do
     }
     source "$srcfn"
 done
+DEBUG=$NO
 
 
 setup() {
@@ -43,7 +44,7 @@ get_nicconfig() {
   for n in "${nic_nums[@]}"; do
     # get FQDD (key) and boottype from nicconfig
     racadm $NODE get NIC.nicconfig.$n > $FN_TMP
-    [[ $VERBOSE -gt 0 ]] && cat $FN_TMP
+    [[ $VERBOSE -eq $YES ]] && cat $FN_TMP
     nic_keys[$n]=$( awk -F= '/Key=NIC/ { split( $2, ary, /\#/ ); print ary[1] }' $FN_TMP )
     nic_boottypes[$n]=$( awk -F= '/BootProto/ { print $2 }' $FN_TMP )
     # get MAC and Link State from hwinventory
@@ -66,14 +67,14 @@ get_nicconfig() {
 get_biosbootseq() {
   fn=$FN_BIOSBOOTSEQ
   racadm $NODE get BIOS.BiosBootSettings.BootSeq > $fn
-  [[ $VERBOSE -gt 0 ]] && cat $fn
+  [[ $VERBOSE -eq $YES ]] && cat $fn
 }
 
 
 get_ipmilan() {
   fn=$FN_IPMILAN
   racadm $NODE get iDRAC.IPMILan.Enable > $fn
-  [[ $VERBOSE -gt 0 ]] && cat $fn
+  [[ $VERBOSE -eq $YES ]] && cat $fn
   awk -F= 'BEGIN { retval=2 }
 /^Enable=/ && $2 == "Enabled" { retval=0; exit }
 /^Enable=/ && $2 == "Disabled" { retval=1; exit }
@@ -92,7 +93,7 @@ END { exit retval }
 get_logicalproc() {
   fn=$FN_LOGICALPROC
   racadm $NODE get BIOS.ProcSettings.LogicalProc > $fn
-  [[ $VERBOSE -gt 0 ]] && cat $fn
+  [[ $VERBOSE -eq $YES ]] && cat $fn
   awk -F= 'BEGIN { retval=2 }
 /^LogicalProc=/ && $2 == "Enabled" { retval=1; exit }
 /^LogicalProc=/ && $2 == "Disabled" { retval=0; exit }
@@ -117,12 +118,12 @@ ENDHERE
 }
 
 
-VERBOSE=0
+VERBOSE=$NO
 while getopts "hv <nodename>" val
 do
   case $val in
     h) print_usage;;
-    v) VERBOSE=1;;
+    v) VERBOSE=$YES;;
     ?) print_usage;;
     :) print_usage;;
   esac
