@@ -5,6 +5,6 @@ racadm() {
     eval $( lsdef -t node -o $1 -i bmc,bmcpassword,bmcusername | tail -n+2 )
     shift
     export SSHPASS="$bmcpassword"
-    sshpass -e ssh -l $bmcusername $bmc -- racadm "$*" | grep -v 'Default password'
+    sshpass -e ssh -l $bmcusername $bmc -- racadm "$*" | grep -v 'efault \(user\|password\)'
     unset SSHPASS
 }

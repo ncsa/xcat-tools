@@ -13,6 +13,8 @@ for f in "${imports[@]}"; do
     }
     source "$srcfn"
 done
+VERBOSE=$NO
+DEBUG=$NO
 
 
 [[ $# -lt 2 ]] && croak "Too few cmdline argurments.  Need 'hostname' and 'racadm cmd'"
