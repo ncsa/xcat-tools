@@ -3,6 +3,7 @@
 BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 CMD=$0
+PWD=$( dirname "$CMD" )
 
 # Import libs
 imports=( logging racadm )
@@ -20,15 +21,9 @@ DEBUG=$NO
 setup() {
   FN_TMP=$( mktemp )
   FN_NICCONF=$( mktemp )
-  FN_BIOSBOOTSEQ=$( mktemp )
-  FN_IPMILAN=$( mktemp )
-  FN_LOGICALPROC=$( mktemp )
   all_tmp_files=( \
     $FN_TMP \
     $FN_NICCONF \
-    $FN_BIOSBOOTSEQ \
-    $FN_IPMILAN \
-    $FN_LOGICALPROC \
 )
 }
 
@@ -64,49 +59,82 @@ get_nicconfig() {
 }
 
 
-get_biosbootseq() {
-  fn=$FN_BIOSBOOTSEQ
-  racadm $NODE get BIOS.BiosBootSettings.BootSeq > $fn
-  [[ $VERBOSE -eq $YES ]] && cat $fn
+pp_cmd() {
+    # pass in arguments by reference
+    # which means pass in the variable name (without the $ prefix)
+    # for _cmdlist, pass the variable name as name[@]
+    local _desc=${!1}
+    local -a _cmdlist=("${!2}")
+    printf "#\n# %s\n#\n" "$_desc"
+    for _c in "${_cmdlist[@]}"; do
+        printf "%s\n" "$_c"
+    done
 }
 
 
-get_ipmilan() {
-  fn=$FN_IPMILAN
-  racadm $NODE get iDRAC.IPMILan.Enable > $fn
-  [[ $VERBOSE -eq $YES ]] && cat $fn
-  awk -F= 'BEGIN { retval=2 }
-/^Enable=/ && $2 == "Enabled" { retval=0; exit }
-/^Enable=/ && $2 == "Disabled" { retval=1; exit }
-END { exit retval }
-' $FN_IPMILAN
-  rc=$?
-  if [[ $rc -eq 1 ]] ; then
-    warn 'IPMI Lan not enabled'
-  elif [[ $rc -gt 1 ]] ; then
-    croak 'IPMI Lan setting not found or unknown value'
-  fi
-  return $rc
+_mk_pxe_cmd() {
+    local _enable="$1"
+    local _action _value _parts _device _nic_id
+    if [[ $_enable -eq $YES ]] ; then
+        _search="UP"
+        _action="enable"
+        _value="PXE"
+    else
+        _search="PXE"
+        _action="disable"
+        _value="NONE"
+    fi
+    # get list of matching devices
+    devlist=( $(awk "/$_search/ { print \$2 }" $FN_NICCONF ) )
+    for _device in "${devlist[@]}"; do
+        _nic_id=$( awk "/$_device/ { print \$1 }" $FN_NICCONF )
+        local desc="Cmds to $_action PXE on $_device"
+        local racadm="$PWD/racadm.sh"
+        local cmds=( \
+            "$racadm $NODE set nic.nicconfig.${_nic_id}.LegacyBootProto $_value" \
+            "$racadm $NODE jobqueue create $_device" \
+            "$racadm $NODE serveraction hardreset" \
+            )
+        pp_cmd desc cmds[@]
+    done
 }
 
 
-get_logicalproc() {
-  fn=$FN_LOGICALPROC
-  racadm $NODE get BIOS.ProcSettings.LogicalProc > $fn
-  [[ $VERBOSE -eq $YES ]] && cat $fn
-  awk -F= 'BEGIN { retval=2 }
-/^LogicalProc=/ && $2 == "Enabled" { retval=1; exit }
-/^LogicalProc=/ && $2 == "Disabled" { retval=0; exit }
-END { exit retval }
-' $fn
-  rc=$?
-  if [[ $rc -eq 1 ]] ; then
-    warn 'LogicalProc enabled'
-  elif [[ $rc -gt 1 ]] ; then
-    croak 'Logical Proc setting not found or unknown value'
-  fi
-  return $rc
+mk_pxe_cmds() {
+    _mk_pxe_cmd $YES
 }
+
+
+mk_un_pxe_cmds() {
+    _mk_pxe_cmd $NO
+}
+
+
+check_pxe_status() {
+    retval=0
+    # ensure only one device set to pxeboot
+    local _numpxedevs=$( grep PXE $FN_NICCONF | wc -l )
+    if [[ $_numpxedevs -lt 1 ]] ; then
+        c_warn "No PXE devices found"
+        mk_pxe_cmds
+        retval=1
+    elif [[ $_numpxedevs -gt 1 ]] ; then
+        c_warn "Multiple PXE devices found"
+        mk_un_pxe_cmds
+        retval=2
+    fi
+    return $retval
+}
+
+
+mk_xcat_cmd_setmac() {
+    pxe_mac=$( awk '/PXE/ { print $4; exit }' $FN_NICCONF )
+    local desc="Cmds to set MAC in xCAT"
+    local cmds=( "chdef -t node $NODE mac=\"${pxe_mac}\"" )
+    pp_cmd desc cmds[@]
+}
+
+
 
 print_usage() {
   cat <<ENDHERE
@@ -138,24 +166,9 @@ setup
 
 ### find pxe device
 get_nicconfig
+#cat $PWD/junk >$FN_NICCONF
+#cat $FN_NICCONF
 
-# ensure only one device set to pxeboot
-numpxedevs=$( grep PXE $FN_NICCONF | wc -l )
-#[[ $numpxedevs -lt 1 ]] && warn "No PXE devices found"
-#[[ $numpxedevs -gt 1 ]] && warn "Multiple PXE devices found"
-#pxe_key=$( awk '/PXE/ { print $2; exit }' $FN_NICCONF )
-#echo "PXE DEVICE: $pxe_key"
-#
-#pxe_mac=$( get_mac $pxe_key )
-#echo "PXE MAC ADDRESS: $pxe_mac"
-echo
-echo "Set mac in xcat using: 'nodech $NODE mac.mac=\"<MAC_ADDR>\"'"
-echo
-
-get_biosbootseq
-
-get_ipmilan
-
-get_logicalproc
+check_pxe_status && mk_xcat_cmd_setmac
 
 cleanup
