@@ -2,13 +2,15 @@
 Useful tools for xCAT
 
 # Installation / Update
+### Quick Install (into $HOME/xcat-tools)
 1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh | bash`
+### Customize install dir
+1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh`
+1. `XCAT_TOOLS_INSTALL_DIR=/custom/install/path ./quickstart.sh`
 
 |||
 | --- | --- |
-| :information_source: | Default install location is `$HOME/xcat-tools` |
-|| For custom install location, use: `export XCAT_TOOLS_INSTALL_DIR=/custom/install/path` |
-|| Install also touches `$HOME/.bashrc` and `$HOME/.bashrc.d` |
+| :information_source: | Install also touches `$HOME/.bashrc` and `$HOME/.bashrc.d`, regardless of XCAT_TOOLS_INSTALL_DIR|
 
 # Usage
 ## Postscripts
