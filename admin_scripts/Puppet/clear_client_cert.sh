@@ -73,7 +73,7 @@ done
 
 
 # Build nodelist from cmdline args
-nodelist=( build_nodelist "$@" )
+nodelist=( $( build_nodelist "$@" ) )
 
 
 ### Do work for each node

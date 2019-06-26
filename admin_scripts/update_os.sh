@@ -49,7 +49,7 @@ pause() {
 [[ $DEBUG -eq 1 ]] && set -x
 
 # Build nodelist from cmdline args
-nodelist=( build_nodelist "$@" )
+nodelist=( $( build_nodelist "$@" ) )
 
 tmpdir=$( mktemp -d )
 echo "OUTPUT LOGDIR: $tmpdir"

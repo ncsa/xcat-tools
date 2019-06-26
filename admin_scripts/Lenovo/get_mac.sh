@@ -14,7 +14,7 @@ for f in "${imports[@]}"; do
     source "$srcfn"
 done
 
-nodelist=( build_nodelist "$@" )
+nodelist=( $( build_nodelist "$@" ) )
 
 for n in "${nodelist[@]}"; do
     mac=$( rinv "$n" mac | awk '/: MAC Address 1:/ {print $NF}' )

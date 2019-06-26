@@ -76,7 +76,7 @@ done
 [[ $VERBOSE -eq 1 ]] && set -x
 
 # Build nodelist from cmdline args
-nodelist=( build_nodelist "$@" )
+nodelist=( $( build_nodelist "$@" ) )
 
 
 # Do work for each node

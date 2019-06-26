@@ -51,7 +51,7 @@ done
 [[ $VERBOSE -eq 1 ]] && set -x
 
 # Verify noderange
-nodelist=( build_nodelist "$@" )
+nodelist=( $( build_nodelist "$@" ) )
 
 for n in "${nodelist[@]}" ; do
   # Get machine info
