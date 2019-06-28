@@ -144,11 +144,16 @@ Options:
   -h Help
 
 Comments:
-  Configure a nic: racadm.sh <NODE> set nic.nicconfig.<NIC_ID>.LegacyBootProto <VAL>'
-  where:
-    <NODE>    = nodename
-    <NIC_ID>  = integer id (from column one in normal output)
-    <VAL>     = one of "PXE" or "NONE"
+  Configure a nic: 
+  1. racadm.sh <NODE> set nic.nicconfig.<NIC_ID>.LegacyBootProto <VAL>'
+  2. racadm.sh <NODE> jobqueue create <DEVICe>
+  3. racadm.sh <NODE> serveraction hardreset
+       where:
+         <NODE>   = nodename
+         <NIC_ID> = integer id (from column one in normal output)
+         <VAL>    = one of "PXE" or "NONE"
+         <DEVICE> = device_name from column two in normal output
+                    (ie: NIC.Integrated.1-3-1)
 ENDHERE
 }
 
