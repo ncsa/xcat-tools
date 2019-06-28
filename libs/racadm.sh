@@ -122,5 +122,5 @@ get_val() {
 match_ok() {
     raw_val="$1"
     expected_val="$2"
-    echo "$raw_val" | grep -iq "^${expected_val}$"
+    echo "$raw_val" | grep -iq "^${expected_val}"
 }
