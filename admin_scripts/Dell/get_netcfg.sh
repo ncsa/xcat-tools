@@ -142,6 +142,13 @@ Usage: $CMD [options] nodename
 Options:
   -v Verbose
   -h Help
+
+Comments:
+  Configure a nic: racadm.sh <NODE> set nic.nicconfig.<NIC_ID>.LegacyBootProto <VAL>'
+  where:
+    <NODE>    = nodename
+    <NIC_ID>  = integer id (from column one in normal output)
+    <VAL>     = one of "PXE" or "NONE"
 ENDHERE
 }
 

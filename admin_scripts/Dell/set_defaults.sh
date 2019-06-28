@@ -14,7 +14,7 @@ declare -A _SETTINGS_RW=( ['BIOS.ProcSettings.LogicalProc']='Disabled' \
 )
 
 # Import libs
-imports=( logging racadm )
+imports=( logging racadm questions )
 for f in "${imports[@]}"; do
     srcfn="${LIB}/${f}.sh"
     [[ -f "$srcfn" ]] || {
