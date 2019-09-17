@@ -18,20 +18,20 @@ get_puppet_enable_state() {
 set_puppet_ensure_state() {
     [[ $DEBUG -eq $YES ]] && set -x
     local _cur_state _tgt_state
-    _tgtstate="$1"
-    $PUPPET resource service puppet ensure="$tgt_state"
+    _tgt_state="$1"
+    $PUPPET resource service puppet ensure="$_tgt_state"
     _cur_state=$( get_puppet_ensure_state )
-    [[ "$_cur_state" == "$tgt_state" ]]
+    [[ "$_cur_state" == "$_tgt_state" ]]
 }
 
 
 set_puppet_enable_state() {
     [[ $DEBUG -eq $YES ]] && set -x
     local _cur_state _tgt_state
-    _tgtstate="$1"
-    $PUPPET resource service puppet enable="$tgt_state"
+    _tgt_state="$1"
+    $PUPPET resource service puppet enable="$_tgt_state"
     _cur_state=$( get_puppet_enable_state )
-    [[ "$_cur_state" == "$tgt_state" ]]
+    [[ "$_cur_state" == "$_tgt_state" ]]
 }
 
 
