@@ -3,6 +3,7 @@ NO=1
 
 croak() {
   echo "ERROR $*" >&2
+  kill -s TERM $BASHPID
   exit 99
 }
 

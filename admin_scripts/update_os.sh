@@ -22,13 +22,15 @@ for f in "${imports[@]}"; do
 done
 
 sync_files_to_tgt() {
+    local _tgtnode="$1"
     local _tmpfn=$(mktemp)
+    $XCATBIN/xdsh "$_tgtnode" "rm -rf $TGT_DIR"
     >>$_tmpfn cat <<ENDSYNCFILE
 $LIB/* -> $TGT_DIR/libs
 $CLIENT_SCRIPTS/gpfs_unmount.sh -> $TGT_DIR
 $CLIENT_SCRIPTS/update_os.sh -> $TGT_DIR
 ENDSYNCFILE
-    $XCATBIN/xdcp "$tgtnode" -p -t 300 -F $_tmpfn
+    $XCATBIN/xdcp "$_tgtnode" -p -t 300 -F $_tmpfn
     rm $_tmpfn
 }
 

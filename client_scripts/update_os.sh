@@ -33,7 +33,7 @@ save_state() {
     else
         _value="${!_name}"
     fi
-    >>"$_fn_state" echo "${_name}=${_value}"
+    >>"$_fn_state" echo "${_name}=\"${_value}\""
 }
 
 
@@ -51,20 +51,28 @@ initialize() {
     [[ $DEBUG -eq 1 ]] && set -x
     restore_state
     let "ITERATION=$ITERATION + 1"
+    save_state ITERATION
     rm_cron "$PRG"
 }
 
 
-fail_after_X_attempts() {
+failed_at() {
+    # Set FAILED_AT variable, Update and save state for FAILURE_HISTORY
+    [[ $DEBUG -eq 1 ]] && set -x
+    FAILED_AT="$1"
+    FAILURE_HISTORY="$FAILURE_HISTORY $FAILED_AT"
+    save_state FAILURE_HISTORY
+}
+
+
+fail_after_too_many_attempts() {
     # TODO - this could be improved by checking how many times the current
     #        value for FAILED_AT exists in FAILURE_HISTORY
     #        ... instead of comparison to reboot count (ie: ITERATION)
     [[ $DEBUG -eq 1 ]] && set -x
-    local _max_tries _msg_parts
-    _max_tries=$1
-    _msg_parts=( "$@" )
-    [[ $ITERATION -ge $_max_tries ]] && {
-        croak "Failing after '$ITERATION' attempts: ${_msg_parts[@]}"
+    _msg_parts=( "$FAILURE_HISTORY" "$FAILED_AT" )
+    [[ $ITERATION -gt $MAX_RETRIES ]] && {
+        croak "Failing after '$ITERATION' attempts: Failure History: '$FAILURE_HISTORY'"
     }
 }
 
@@ -77,19 +85,20 @@ stop_puppet() {
     [[ $DEBUG -eq 1 ]] && set -x
     is_safe_to_proceed || return 1
     [[ -z "$PUP_ENSURE_STATE" ]] && {
-        PUP_ENSURE_STATE=$( get_pup_ensure_state )
+        #PUP_ENSURE_STATE=$( get_puppet_ensure_state )
+        PUP_ENSURE_STATE=$( get_puppet_ensure_state )
         save_state PUP_ENSURE_STATE
     }
     [[ -z "$PUP_ENABLE_STATE" ]] && {
-        PUP_ENABLE_STATE=$( get_pup_enable_state )
+        PUP_ENABLE_STATE=$( get_puppet_enable_state )
         save_state PUP_ENABLE_STATE
     }
     puppet_agent_stop || {
-        FAILED_AT=puppet_agent_stop
+        failed_at "puppet_agent_stop"
         try_again_after_reboot
     }
     puppet_agent_disable || {
-        FAILED_AT=puppet_agent_disable
+        failed_at "puppet_agent_disable"
         try_again_after_reboot
     }
 }
@@ -98,14 +107,17 @@ stop_puppet() {
 restore_puppet() {
     [[ $DEBUG -eq 1 ]] && set -x
     is_safe_to_proceed || return 1
-    set_puppet_ensure_state $PUP_ENSURE_STATE || {
-        FAILED_AT=set_puppet_ensure_state
-        try_again_after_reboot
-    }
     set_puppet_enable_state $PUP_ENABLE_STATE || {
-        FAILED_AT=set_puppet_enable_state
+        failed_at "set_puppet_enable_state"
         try_again_after_reboot
     }
+    if [[ $FORCE_REBOOT -eq $NO ]] && [[ $REBOOT_REQUIRED -eq $NO ]] ; then
+        # Start puppet only if NOT rebooting
+        set_puppet_ensure_state $PUP_ENSURE_STATE || {
+            failed_at "set_puppet_ensure_state"
+            try_again_after_reboot
+        }
+    fi
 }
 
 
@@ -119,8 +131,6 @@ try_again_after_reboot() {
     [[ $DEBUG -eq 1 ]] && set -x
     REBOOT_REQUIRED=$YES
     mk_cron "$PRG" '@reboot'
-    FAILURE_HISTORY="$FAILURE_HISTORY $FAILED_AT"
-    save_state FAILURE_HISTORY
 }
 
 
@@ -146,8 +156,7 @@ stop_gpfs() {
     [[ -f $_fn_unmount_script ]] || croak "No such file '$_fn_unmount_script'"
     [[ -x $_fn_unmount_script ]] || croak "Not executable '$_fn_unmount_script'"
     $_fn_unmount_script || {
-        FAILED_AT=gpfs_unmount
-        fail_after_X_attempts 2 "$FAILED_AT"
+        failed_at "gpfs_unmount"
         disable_gpfs #should ensure successful gpfs unmount after reboot
         try_again_after_reboot
     }
@@ -191,8 +200,8 @@ apply_updates() {
     ${DISABLED_PKGS[@]/#/--exclude=} \
     -y \
     upgrade || {
-        FAILED_AT=yum_upgrade
-        fail_after_X_attempts 2 "$FAILED_AT"
+        failed_at "yum_upgrade"
+        fail_after_too_many_attempts
         try_again_after_reboot
     }
 
@@ -203,7 +212,8 @@ apply_updates() {
 
 
 reboot() {
-    if [[ $FORCE_REBOOT -eq $YES -o $REBOOT_REQUIRED -eq $YES ]] ; then
+    if [[ $FORCE_REBOOT -eq $YES ]] || [[ $REBOOT_REQUIRED -eq $YES ]] ; then
+        fail_after_too_many_attempts 
         log 'REBOOTING SERVER...'
         /sbin/shutdown -r now
     fi
@@ -243,14 +253,15 @@ ENDHERE
 # Script variables
 let YES=SUCCESS=TRUE=0
 let NO=FAIL=FALSE=1
+ALLOW_DEFAULTS=$YES
 DEBUG=$NO
 DISABLED_PKGS=()
 DISABLED_REPOS=()
 ENABLED_REPOS=()
-ALLOW_DEFAULTS=$YES
 FAILED_AT=
 FORCE_REBOOT=$NO
 ITERATION=0
+MAX_RETRIES=2
 REBOOT_REQUIRED=$NO
 VERBOSE=$NO
 
