@@ -13,3 +13,5 @@ alias rebuild=___INSTALL_DIR___/admin_scripts/rebuild_xcat_node.sh
 # add xcat-tools to path
 [[ ":$PATH:" != *":___INSTALL_DIR___/admin_scripts:"* ]] \
 && PATH="${PATH}:___INSTALL_DIR___/admin_scripts"
+for i in Dell Lenovo Puppet; do [[ ":$PATH:" != *":___INSTALL_DIR___/admin_scripts/$i:"* ]] \
+&& PATH="${PATH}:___INSTALL_DIR___/admin_scripts/$i"; done
