@@ -4,7 +4,7 @@ BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 
 # Import libs
-imports=( logging racadm )
+imports=( logging racadm questions )
 for f in "${imports[@]}"; do
     srcfn="${LIB}/${f}.sh"
     [[ -f "$srcfn" ]] || {

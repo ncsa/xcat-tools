@@ -6,13 +6,6 @@ BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 PRG=$( basename $0 )
 
-# All settings that should be set
-declare -A _SETTINGS_RW=( ['BIOS.ProcSettings.LogicalProc']='Disabled' \
-                          ['BIOS.SysProfileSettings.SysProfile']='PerfOptimized' \
-                          ['BIOS.BiosBootSettings.BootMode']='Bios' \
-                          ['BIOS.BiosBootSettings.BootSeq']='HardDisk.List.1-1' \
-)
-
 # Import libs
 imports=( logging racadm questions )
 for f in "${imports[@]}"; do
@@ -24,19 +17,56 @@ for f in "${imports[@]}"; do
     source "$srcfn"
 done
 
+
+# iDRAC settings
+declare -A _SETTINGS_RW=(
+    ['BIOS.ProcSettings.LogicalProc']='Disabled' \
+    ['BIOS.SysProfileSettings.SysProfile']='PerfOptimized' \
+)
+
 # List of FQDD keys to create jobqueues
+# (used by functions in racadm)
 declare -a FQDD_LIST
 
+# an exit code
+RETRY=2
 
 #
 # Local Functions
 #
 
 
+enable_bios_bootmode() {
+    [[ $DEBUG -eq $YES ]] && set -x
+    # set bootmode to Bios
+    _SETTINGS_RW['BIOS.BiosBootSettings.BootMode']='Bios'
+    _SETTINGS_RW['BIOS.BiosBootSettings.BootSeq']='HardDisk.List.1-1'
+}
+
+
+enable_uefi_bootmode() {
+    [[ $DEBUG -eq $YES ]] && set -x
+    # set bootmode to uefi
+    _SETTINGS_RW['BIOS.BiosBootSettings.BootMode']='Uefi'
+    _SETTINGS_RW['BIOS.NetworkSettings.PxeDev1EnDis']='Enabled'
+    # Get PXE device
+    log "Querying NICs for a PXE device ..."
+    local _nicconfig=$( get_nicconfig )
+    log "NIC config: '$_nicconfig'"
+    local _pxe_fqdd=$( echo "$_nicconfig" | grep -F 'PXE' | head -1 | cut -d' ' -f2 )
+    log "Got PXE device: '$_pxe_fqdd'"
+    if [[ -z "$_pxe_fqdd" ]] ; then
+        warn 'No PXE device found. Run get_netcfg.sh'
+        return $ERR
+    fi
+    _SETTINGS_RW['BIOS.PxeDev1Settings.PxeDev1Interface']=$_pxe_fqdd
+    _SETTINGS_RW['BIOS.PxeDev1Settings.PxeDev1Protocol']='IPv4'
+}
+
+
 set_settings() {
     [[ $DEBUG -eq $YES ]] && set -x
-    # skip if dry-run was requested
-    [[ $DRYRUN -eq $YES ]] && return 0
+    local _needs_reboot=$NO
     for key in "${!_SETTINGS_RW[@]}"; do
         cur_val=$( get_val "$key" )
         expected_val="${_SETTINGS_RW[$key]}"
@@ -44,9 +74,15 @@ set_settings() {
             c_warn "$key=$cur_val"
             printf "\tAttempting to set $key=$expected_val\n"
             set_key_val "$key" "$expected_val"
+            _needs_reboot=$YES
         fi
     done
-    apply_settings
+    local _rc=$OK
+    if [[ $_needs_reboot -eq $YES ]] ; then
+        apply_settings
+        _rc=$RETRY
+    fi
+    return $_rc
 }
 
 
@@ -78,18 +114,22 @@ usage() {
 
 $PRG
     Configure iDRAC settings with useful default values.
+    Note that one of -b (bios) or -u (uefi) must be specified.
 
 Usage:
-    $PRG [OPTIONS] <NODE>
+    $PRG [OPTIONS] {-b|-u} <NODE>
 
 PARAMETERS:
     NODE   A node name, already configured with ipmi settings in xCAT
 
 OPTIONS:
   --help,-h      print help message and exit
+  --bios,-b      Choose BIOS boot mode type
   --clearall     Clear all pending changes and jobqueues
   --debug        Debug mode
   --dryrun,-n    Dry-run; Show existing values, but don't try to set anything
+  --uefi,-u      Choose UEFI boot mode type
+  --verbose,-v   Verbose mode
   --yes|-y       Answer yes to all prompts
 
 ENDHERE
@@ -101,11 +141,16 @@ DRYRUN=$NO
 ENDWHILE=0
 FORCEYES=$NO
 VERBOSE=$NO
+ENABLE_UEFI_BOOT_MODE=$NO
+ENABLE_BIOS_BOOT_MODE=$NO
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   case $1 in
     --help|-h)
         usage
         exit 0
+        ;;
+    --bios|-b)
+        ENABLE_BIOS_BOOT_MODE=$YES
         ;;
     --clearall)
         CLEARALL=$YES
@@ -115,6 +160,9 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
         ;;
     --dryrun|-n)
         DRYRUN=$YES
+        ;;
+    --uefi|-u)
+        ENABLE_UEFI_BOOT_MODE=$YES
         ;;
     --verbose|-v)
         VERBOSE=$YES
@@ -128,6 +176,12 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   shift
 done
 
+[[ $ENABLE_UEFI_BOOT_MODE -eq $NO && $ENABLE_BIOS_BOOT_MODE -eq $NO ]] && \
+croak "Missing 'boot mode' type"
+
+[[ $ENABLE_UEFI_BOOT_MODE -eq $YES && $ENABLE_BIOS_BOOT_MODE -eq $YES ]] && \
+croak "Choose exactly one 'boot mode' type"
+
 [[ $# -lt 1 ]] && croak "Too few cmdline argurments.  Need 'nodename'"
 NODE=$1
 shift
@@ -139,6 +193,14 @@ if [[ $CLEARALL -eq $YES ]] ; then
    exit 0
 fi
 
-set_settings
+[[ $ENABLE_UEFI_BOOT_MODE -eq $YES ]] && enable_uefi_bootmode
+[[ $ENABLE_BIOS_BOOT_MODE -eq $YES ]] && enable_bios_bootmode
+
+if [[ $DRYRUN -eq $YES ]] ; then
+    get_settings
+    exit 0
+fi
+
+set_settings || set_settings 
 
 get_settings

@@ -59,9 +59,19 @@ check_racadm_output() {
 }
 
 
-_sleep(){
-    printf 'Waiting 120 seconds for iDRAC reboot'
-    for i in $(seq 12); do 
+_wait_for_iDRAC_jobqueues(){
+    [[ $DEBUG -eq $YES ]] && set -x
+    printf 'Waiting up to 5 mins for iDRAC jobqueues to complete.'
+    for i in $(seq 6); do 
+        sleep 10
+        printf '.'
+    done
+    for i in $(seq 20); do 
+        num_incomplete_jobs=$( racadm "$NODE" jobqueue view \
+                               | grep -F 'Percent Complete' \
+                               | grep -v -F 'Percent Complete=[100]' \
+                               | wc -l )
+        [[ $num_incomplete_jobs -lt 1 ]] && break
         sleep 10
         printf '.'
     done
@@ -78,15 +88,16 @@ Continue?"
     fi
     printf '%s\n' "${FQDD_LIST[@]}" \
     | sort -u \
+    | head -1 \
     | while read; do
-        cmdparts=("$NODE" jobqueue create "$REPLY")
+        cmdparts=("$NODE" jobqueue create "$REPLY" '-r' pwrcycle)
         log "racadm ${cmdparts[@]}"
         output=$( racadm "${cmdparts[@]}" )
         check_racadm_output "$output" "attempt to '${cmdparts[*]}'"
     done
-    output=$( racadm $NODE serveraction hardreset )
-    check_racadm_output "$output" "attempt to serveraction hardreset"
-    _sleep
+#    output=$( racadm $NODE serveraction hardreset )
+#    check_racadm_output "$output" "attempt to serveraction hardreset"
+    _wait_for_iDRAC_jobqueues
 }
 
 
@@ -123,4 +134,30 @@ match_ok() {
     raw_val="$1"
     expected_val="$2"
     echo "$raw_val" | grep -iq "^${expected_val}"
+}
+
+
+get_nicconfig() {
+    local _tmpf=$(mktemp)
+    nic_nums=( $( racadm $NODE get NIC.nicconfig | awk '/^NIC.nicconfig.[0-9] / { split($1, ary, /\./); print ary[3] }' ) )
+    for n in "${nic_nums[@]}"; do
+        # get FQDD (key) and boottype from nicconfig
+        racadm $NODE get NIC.nicconfig.$n > $_tmpf
+        [[ $DEBUG -eq $YES ]] && cat $_tmpf >&2
+        nic_keys[$n]=$( awk -F= '/Key=NIC/ { split( $2, ary, /\#/ ); print ary[1] }' $_tmpf )
+        nic_boottypes[$n]=$( awk -F= '/BootProto/ { print $2 }' $_tmpf )
+        # get MAC and Link State from hwinventory
+        racadm $NODE hwinventory ${nic_keys[$n]} > $_tmpf
+        mac_addrs[$n]=$( awk '/^Current MAC Address:/ { print $NF }' $_tmpf )
+        link_state[$n]=$( awk '
+            /^Link Speed:/ { 
+                lspeed = match( $3, /[0-9]/ )
+                if ( lspeed > 0 ) { print "UP" }
+                else { print "DOWN" }
+            }' $_tmpf )
+        proto=${nic_boottypes[$n]}
+        [[ -z "$proto" ]] && proto="undef"
+        echo "$n ${nic_keys[$n]} ${link_state[$n]} ${mac_addrs[$n]} ${proto}"
+    done
+    rm $_tmpf
 }

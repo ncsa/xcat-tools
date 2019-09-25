@@ -1,5 +1,7 @@
 YES=0
 NO=1
+OK=0
+ERR=1
 
 croak() {
   echo "ERROR $*" >&2

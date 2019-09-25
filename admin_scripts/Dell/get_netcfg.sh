@@ -33,30 +33,30 @@ cleanup() {
 }
 
 
-get_nicconfig() {
-  fn=$FN_NICCONF
-  nic_nums=( $( racadm $NODE get NIC.nicconfig | awk '/^NIC.nicconfig.[0-9] / { split($1, ary, /\./); print ary[3] }' ) )
-  for n in "${nic_nums[@]}"; do
-    # get FQDD (key) and boottype from nicconfig
-    racadm $NODE get NIC.nicconfig.$n > $FN_TMP
-    [[ $VERBOSE -eq $YES ]] && cat $FN_TMP
-    nic_keys[$n]=$( awk -F= '/Key=NIC/ { split( $2, ary, /\#/ ); print ary[1] }' $FN_TMP )
-    nic_boottypes[$n]=$( awk -F= '/BootProto/ { print $2 }' $FN_TMP )
-    # get MAC and Link State from hwinventory
-    racadm $NODE hwinventory ${nic_keys[$n]} > $FN_TMP
-    mac_addrs[$n]=$( awk '/^Current MAC Address:/ { print $NF }' $FN_TMP )
-    link_state[$n]=$( awk '
-      /^Link Speed:/ { 
-        lspeed = match( $3, /[0-9]/ )
-        if ( lspeed > 0 ) { print "UP" }
-        else { print "DOWN" }
-      }' $FN_TMP )
-    proto=${nic_boottypes[$n]}
-    [[ -z "$proto" ]] && proto="undef"
-    echo "$n ${nic_keys[$n]} ${link_state[$n]} ${mac_addrs[$n]} ${proto}" \
-    | tee -a $fn
-  done
-}
+#get_nicconfig() {
+#  fn=$FN_NICCONF
+#  nic_nums=( $( racadm $NODE get NIC.nicconfig | awk '/^NIC.nicconfig.[0-9] / { split($1, ary, /\./); print ary[3] }' ) )
+#  for n in "${nic_nums[@]}"; do
+#    # get FQDD (key) and boottype from nicconfig
+#    racadm $NODE get NIC.nicconfig.$n > $FN_TMP
+#    [[ $VERBOSE -eq $YES ]] && cat $FN_TMP
+#    nic_keys[$n]=$( awk -F= '/Key=NIC/ { split( $2, ary, /\#/ ); print ary[1] }' $FN_TMP )
+#    nic_boottypes[$n]=$( awk -F= '/BootProto/ { print $2 }' $FN_TMP )
+#    # get MAC and Link State from hwinventory
+#    racadm $NODE hwinventory ${nic_keys[$n]} > $FN_TMP
+#    mac_addrs[$n]=$( awk '/^Current MAC Address:/ { print $NF }' $FN_TMP )
+#    link_state[$n]=$( awk '
+#      /^Link Speed:/ { 
+#        lspeed = match( $3, /[0-9]/ )
+#        if ( lspeed > 0 ) { print "UP" }
+#        else { print "DOWN" }
+#      }' $FN_TMP )
+#    proto=${nic_boottypes[$n]}
+#    [[ -z "$proto" ]] && proto="undef"
+#    echo "$n ${nic_keys[$n]} ${link_state[$n]} ${mac_addrs[$n]} ${proto}" \
+#    | tee -a $fn
+#  done
+#}
 
 
 pp_cmd() {
@@ -92,7 +92,7 @@ _mk_pxe_cmd() {
         local racadm="$PWD/racadm.sh"
         local cmds=( \
             "$racadm $NODE set nic.nicconfig.${_nic_id}.LegacyBootProto $_value" \
-            "$racadm $NODE jobqueue create $_device" \
+            "$racadm $NODE jobqueue create $_device -r pwrcycle" \
             "$racadm $NODE serveraction hardreset" \
             )
         pp_cmd desc cmds[@]
@@ -146,7 +146,7 @@ Options:
 Comments:
   Configure a nic: 
   1. racadm.sh <NODE> set nic.nicconfig.<NIC_ID>.LegacyBootProto <VAL>'
-  2. racadm.sh <NODE> jobqueue create <DEVICe>
+  2. racadm.sh <NODE> jobqueue create <DEVICE> -r pwrcycle
   3. racadm.sh <NODE> serveraction hardreset
        where:
          <NODE>   = nodename
@@ -177,9 +177,7 @@ NODE=$1
 setup
 
 ### find pxe device
-get_nicconfig
-#cat $PWD/junk >$FN_NICCONF
-#cat $FN_NICCONF
+get_nicconfig | tee $FN_NICCONF
 
 check_pxe_status && mk_xcat_cmd_setmac
 
