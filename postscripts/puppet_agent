@@ -83,16 +83,18 @@ restore_certs() {
     SSLDIR=$( $PUPPET config print ssldir )
     set -x
     for d in certs public_keys private_keys; do
-        pemlist=( $( ls $BKUP_SSLDIR/$d/*${NODE}*.pem ) )
+        pemlist=( $( ls $BKUP_SSLDIR/$d/*${NODE}.*.pem ) )
         [[ ${#pemlist[@]} -gt 1 ]] && croak "Multiple PEM files found for this host"
         local _pemfile="${pemlist[0]}"
-        logr "Found PEM file '$_pemfile'"
-        if [[ -f "$_pemfile" ]] ; then
-            mkdir -p $SSLDIR/$d
-            logr "copying cert '$_pemfile'"
-            cp "$_pemfile" $SSLDIR/$d/.
-        else
-            croak "File '$_pemfile' failed '-f' file check"
+        if [[ -n "$_pemfile" ]] ; then
+            logr "Found PEM file '$_pemfile'"
+            if [[ -f "$_pemfile" ]] ; then
+                mkdir -p $SSLDIR/$d
+                logr "copying cert '$_pemfile'"
+                cp "$_pemfile" $SSLDIR/$d/.
+            else
+                croak "File '$_pemfile' failed '-f' file check"
+            fi
         fi
     done
     logr "copying CA cert '$BKUP_SSLDIR/certs/$CA'"
