@@ -42,7 +42,7 @@ do_client_certs_exist() {
   [[ $DEBUG -eq 1 ]] && set -x
   node=$1
   retval=1
-  count=$(find $BKUP_SSLDIR -name "*${node}*.pem"  | wc -l)
+  count=$(find $BKUP_SSLDIR -name "*${node}.*.pem"  | wc -l)
   [[ $count -gt 0 ]] && retval=0
   return $retval
 }
@@ -132,8 +132,11 @@ for n in "${nodelist[@]}" ; do
   hostdir=${tmpdir}/ssl._$n
   for subdir in certs private_keys public_keys; do
     srcdir=${hostdir}/$subdir
-    fn=$( find $srcdir -name "*${n}*.pem" -printf '%f' )
-    [[ -z "$fn" ]] && warn "No pem file found in '$srcdir'"
+    fn=$( find $srcdir -name "*${n}.*.pem" -printf '%f' )
+    if [[ -z "$fn" ]] ; then
+      warn "No pem file found in '$srcdir'"
+      continue
+    fi
     src=$srcdir/$fn
     tgt=$BKUP_SSLDIR/$subdir/$fn
     mv $src $tgt
@@ -142,7 +145,9 @@ for n in "${nodelist[@]}" ; do
   log $( find $BKUP_SSLDIR -name $fn -exec ls -l {} \; )
 done
 
-# Ensure ca.pem is installed in backup area
+# If ca.pem is not found, copy the one from this node
+# (this will work only if ca.pem from localhost is the same as remote host)
+# (but better than nothing, since without ca.pem, nothing will work)
 [[ -f $BKUP_SSLDIR/certs/ca.pem ]] || \
 cp $SSLDIR/certs/ca.pem $BKUP_SSLDIR/certs/ca.pem
 
