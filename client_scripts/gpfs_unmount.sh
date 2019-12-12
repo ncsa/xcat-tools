@@ -43,6 +43,8 @@ are_kernel_modules_loaded() {
 
 is_gpfs_stopped() {
     [[ $DEBUG -eq 1 ]] && set -x
+    # Return quickly if modules are not loaded
+    are_kernel_modules_loaded || return 0
     cur_state=$( get_gpfs_state )
     # stopped?
     local stopped=1
