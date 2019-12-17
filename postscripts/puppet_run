@@ -1,0 +1,88 @@
+#!/bin/bash
+
+###
+# Description: Run Puppet and then start/enable as a service
+
+# Usage:
+#      1. updatenode <noderange> -P "puppet_run"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+PUPPET=/opt/puppetlabs/bin/puppet
+AGENTLOG=/var/log/xcat/puppet_agent.log
+
+
+#
+# FUNCTIONS
+#
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+puppet_agent_runonce() {
+    local _e=$1
+    local _env
+    [[ -n "$_e" ]] && _env="--environment $_e"
+    local _logdir=$( dirname $AGENTLOG )
+    mkdir -p $_logdir
+    echo >> $AGENTLOG
+    date >> $AGENTLOG
+    echo "About to run puppet agent in '$_e' environment" >> $AGENTLOG
+    set -x
+    $PUPPET agent --test --logdest $AGENTLOG $_env
+    set +x
+}
+
+
+puppet_agent_enable() {
+    logr "Enabling puppet agent service"
+    $PUPPET resource service puppet ensure=running
+    $PUPPET resource service puppet enable=true
+    logr "Enabling puppet agent service ... OK"
+}
+
+
+#
+# DO WORK
+#
+
+# Allow for custom environment to be specified on cmdline
+# (this won't do anything if using ENC at your site)
+[[ $# -gt 0 ]] && {
+    REQUESTED_ENV="$1"
+    shift
+}
+
+logr "puppet agent first run"
+puppet_agent_runonce $REQUESTED_ENV
+logr "puppet agent first run ... OK"
+sleep 5
+logr "puppet agent second run"
+puppet_agent_runonce $REQUESTED_ENV
+logr "puppet agent second run ... OK"
+
+puppet_agent_enable
+
+logr "end of puppet_run on OS '$OSVER' on node '$NODE'"
+
+exit 0

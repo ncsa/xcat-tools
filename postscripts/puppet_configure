@@ -1,14 +1,15 @@
 #!/bin/bash
 
 ###
-# Description: Prepare and start puppet agent
+# Description: Configure Puppet agent
 #   0. Assume appropriate yum repos are already configured
 #   1. Install puppet-agent RPM
 #   2. Re-install, if exist, pre-existing puppet SSL certs
-
+# Note: Puppet agent service is started/enabled via puppet_run
+#
 # Usage:
 #      1. use $PUPPETMASTER or $MASTER as the puppet server
-#            updatenode <noderange> -P "puppet_certs"
+#            updatenode <noderange> -P "custom/puppet_configure" [CUSTOM_ENVIRONMENT_WHEN_NO_ENC]
 #
 # Source: https://github.com/ncsa/xcat-tools
 ###
@@ -26,7 +27,6 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 PUPPET=/opt/puppetlabs/bin/puppet
 BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
 CA=ca.pem
-AGENTLOG=/var/log/xcat/puppet_agent.log
 
 
 #
@@ -55,29 +55,6 @@ set_server() {
 }
 
 
-puppet_agent_runonce() {
-    local _e=$1
-    local _env
-    [[ -n "$_e" ]] && _env="--environment $_e"
-    local _logdir=$( dirname $AGENTLOG )
-    mkdir -p $_logdir
-    echo >> $AGENTLOG
-    date >> $AGENTLOG
-    echo "About to run puppet agent in '$_e' environment" >> $AGENTLOG
-    set -x
-    $PUPPET agent --test --logdest $AGENTLOG $_env
-    set +x
-}
-
-
-puppet_agent_enable() {
-    logr "Enabling puppet agent service"
-    $PUPPET resource service puppet ensure=running
-    $PUPPET resource service puppet enable=true
-    logr "Enabling puppet agent service ... OK"
-}
-
-
 restore_certs() {
     logr "copying puppet certs from the master."
     SSLDIR=$( $PUPPET config print ssldir )
@@ -87,18 +64,17 @@ restore_certs() {
         [[ ${#pemlist[@]} -gt 1 ]] && croak "Multiple PEM files found for this host"
         local _pemfile="${pemlist[0]}"
         if [[ -n "$_pemfile" ]] ; then
-            logr "Found PEM file '$_pemfile'"
             if [[ -f "$_pemfile" ]] ; then
-                mkdir -p $SSLDIR/$d
+                logr "Found PEM file '$_pemfile'"
                 logr "copying cert '$_pemfile'"
+                mkdir -p $SSLDIR/$d
                 cp "$_pemfile" $SSLDIR/$d/.
-            else
-                croak "File '$_pemfile' failed '-f' file check"
             fi
         fi
     done
     logr "copying CA cert '$BKUP_SSLDIR/certs/$CA'"
-    cp $BKUP_SSLDIR/certs/$CA  $SSLDIR/certs/.
+    mkdir -p $SSLDIR/certs
+    cp $BKUP_SSLDIR/certs/$CA $SSLDIR/certs/.
     ls -R $SSLDIR
     set +x
     logr "copying puppet certs from the master ... OK"
@@ -130,16 +106,6 @@ restore_certs
 # used if DNS is configured properly.
 set_server
 
-logr "puppet agent first run"
-puppet_agent_runonce $REQUESTED_ENV
-logr "puppet agent first run ... OK"
-sleep 5
-logr "puppet agent second run"
-puppet_agent_runonce $REQUESTED_ENV
-logr "puppet agent second run ... OK"
-
-puppet_agent_enable
-
-logr "end of puppet_certs on OS '$OSVER' on node '$NODE'"
+logr "end of puppet_configure on OS '$OSVER' on node '$NODE'"
 
 exit 0
