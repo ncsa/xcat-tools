@@ -1,0 +1,108 @@
+#!/bin/bash
+
+###
+# Description: Custom cleanup process for xCAT, to be run last.
+#              - unmount /install
+#              - stop NFS-related services
+#              - uninstall NFS-related RPMs
+# Source: https://github.com/ncsa/xcat-tools
+#
+# Usage:
+#      1. updatenode <noderange> -P "custom/xcat_cleanup"
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+INSTALLDIR=/install
+
+#
+# GLOBAL VARIABLES
+#
+nfsmounts=1 # assume we have them unless proven otherwise
+
+
+#
+# FUNCTIONS
+#
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+unmount_install() {
+  set -x
+  ## DEBUG
+  findmnt -t nfs,nfs4 "$INSTALLDIR"
+  if [[ 0 -eq "$?" ]]; then
+    umount "$INSTALLDIR"
+    if [[ 0 -eq "$?" ]]; then
+      echo "$INSTALLDIR unmounted"
+    else
+      croak "$INSTALLDIR could not be unmounted"
+    fi
+  fi
+  set +x
+}
+
+
+find_nfs_mounts() {
+  set -x
+  nfsmounts=`mount -t nfs,nfs4 | wc -l`
+  if [[ 0 -eq "$nfsmounts" ]]; then
+    logr "we have no NFS mounts"
+  fi
+  set +x
+}
+
+
+stop_nfs_services() {
+  set -x
+  systemctl stop rpcbind.service rpcbind.socket gssproxy rpc-gssd
+  set +x
+}
+
+
+uninstall_nfs_rpms() {
+  set -x
+  yum -y remove nfs-utils gssproxy rpcbind 
+  set +x
+}
+
+
+#
+# DO WORK
+#
+
+logr "attempting to unmount INSTALLDIR ${INSTALLDIR}..."
+unmount_install
+
+logr "determining if we have remaining NFS mounts"
+find_nfs_mounts
+
+## DEBUG
+logr "nfsmounts = ${nfsmounts}"
+
+if [[ 0 -eq "$nfsmounts" ]]; then
+  logr "stop unnecessary NFS-related services"
+  stop_nfs_services
+  logr "uninstall unnecessary NFS-related RPMs"
+  uninstall_nfs_rpms
+fi
+
+exit 0
