@@ -161,7 +161,7 @@ install_scripts() {
 mk_cron_jobs() {
     [[ $DEBUG -eq $YES ]] && set -x
     local _crondir="${SCRIPT_INSTALL_MAP[cron_scripts]}"
-    find "$_crondir" -type f -print \
+    find "$_crondir" -type f -name '*.sh' -print \
     | while read ; do
         mk_cron "$REPLY" '@daily'
     done
