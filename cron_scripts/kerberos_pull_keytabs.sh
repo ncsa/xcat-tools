@@ -136,5 +136,6 @@ for n in "${nodelist[@]}" ; do
   tgt="$BKUP_KEYTABDIR/${n}.krb5.keytab"
   mv "$src" "$tgt"
   chmod 440 "$tgt"
+  log $(ls -l "$tgt")
 
 done
