@@ -1,22 +1,18 @@
 ###
 # This custom script borrowed heavily from /install/autoinst/<NODENAME>
-# -ALoftus (13 Apr 2018)
 ###
 
-# Partitions will be the smaller of percent and maxsize
-# max_* should be specified in MB
-pct_boot=1
-max_boot=512
-pct_swap=1
-max_swap=2048
-pct_root=10
-max_root=100000
-pct_var=5
-max_var=40000
-pct_tmp=5
-max_tmp=20000
+# PCT must be between 1 & 100
+# MIN and MAX are sizes in MB
+declare -A BOOT SWAP VAR TMP ROOT VARLIB
+BOOT=(   [MIN]=512  [PCT]=1  [MAX]=1024 )
+SWAP=(   [MIN]=512  [PCT]=1  [MAX]=2048 )
+VAR=(    [MIN]=3000 [PCT]=5  [MAX]=40000 )
+TMP=(    [MIN]=1500 [PCT]=5  [MAX]=20000 )
+ROOT=(   [MIN]=6000 [PCT]=10 [MAX]=100000 )
+VARLIB=( [MIN]=6000 [PCT]=10 [MAX]=100000 )
 
-# xcat expects kickstart sytax in this file
+# xcat expects kickstart syntax in this file
 partfile=/tmp/partitionfile
 
 # get install disk from xcat
@@ -38,6 +34,14 @@ min() {
 }
 
 # Custom function
+max() {
+    # Print larger of two numbers
+    local a="$1"
+    local b="$2"
+    [[ "$a" -gt "$b" ]] && echo "$a" || echo "$b"
+}
+
+# Custom function
 x_pct_of_y() {
     # Print x percent of y (integer math)
     local x="$1"
@@ -48,34 +52,49 @@ x_pct_of_y() {
 
 # Custom function
 partcalc() {
-    # Print the smaller of:
-    #   percent of raw disk size
-    #   maxsize
-    local pct="$1"
-    local max_mb="$2"
-    local max_bytes
-    let "max_bytes=$max_mb*1048576"
-    local sz_bytes=$( min "$max_bytes" $( x_pct_of_y "$pct" "$instdisk_raw_bytes" ) )
-    let "sz_mb=$sz_bytes/1048576"
-    echo "$sz_mb"
+    # Calculate the partition size using pct constrained the bounds of min & max
+    local _min_mb="$1"
+    local _pct="$2"
+    local _max_mb="$3"
+    local _min_bytes _pct_bytes _max_bytes _sz_bytes _sz_bm
+    let "_min_bytes=$_min_mb*1048576"
+    let "_max_bytes=$_max_mb*1048576"
+    # calculate num bytes as percent of disk
+    _pct_bytes=$( x_pct_of_y "$_pct" "$instdisk_raw_bytes" )
+    # enforce maximum bound
+    _sz_bytes=$( min "$_max_bytes" "$_pct_bytes" )
+    # enforce minimum bound
+    _sz_bytes=$( max "$_min_bytes" "$_sz_bytes" )
+    let "_sz_mb=$_sz_bytes/1048576"
+    echo "$_sz_mb"
 }
 
 # Partitions should be the smaller of percent and maxsize
-sz_boot=$( partcalc "$pct_boot" "$max_boot" )
-sz_swap=$( partcalc "$pct_swap" "$max_swap" )
-sz_root=$( partcalc "$pct_root" "$max_root" )
-sz_var=$(  partcalc "$pct_var"  "$max_var" )
-sz_tmp=$(  partcalc "$pct_tmp"  "$max_tmp" )
+#echo BOOT
+sz_boot=$( partcalc "${BOOT[MIN]}" "${BOOT[PCT]}" "${BOOT[MAX]}" )
+#echo "boot:$sz_boot"
+#exit
+#echo SWAP
+sz_swap=$( partcalc "${SWAP[MIN]}" "${SWAP[PCT]}" "${SWAP[MAX]}" )
+#echo "swap:$sz_swap"
+#exit
+#echo VAR
+sz_var=$(  partcalc "${VAR[MIN]}" "${VAR[PCT]}" "${VAR[MAX]}" )
+#echo TMP
+sz_tmp=$(  partcalc "${TMP[MIN]}" "${TMP[PCT]}" "${TMP[MAX]}" )
+#echo ROOT
+sz_root=$( partcalc "${ROOT[MIN]}" "${ROOT[PCT]}" "${ROOT[MAX]}" )
+#echo VARLIB
+sz_varlib=$( partcalc "${VARLIB[MIN]}" "${VARLIB[PCT]}" "${VARLIB[MAX]}" )
 #echo "boot:$sz_boot"
 #echo "swap:$sz_swap"
-#echo "root:$sz_root"
 #echo "var:$sz_var"
 #echo "tmp:$sz_tmp"
+#echo "root:$sz_root"
+#echo "varlib:$sz_varlib"
 #exit
 
-# Clobber existing file as a safety precaution
-: >$partfile
-
+# Try to smartly determine filesystem type
 modprobe ext4 >& /dev/null
 modprobe ext4dev >& /dev/null
 if grep ext4dev /proc/filesystems > /dev/null; then
@@ -94,6 +113,10 @@ if uname -r|grep -q '^3.*el7'; then
     EFIFSTYPE=efi
 fi
 
+# Clobber existing file as a safety precaution
+: >$partfile
+
+# Create new partfile
 echo "ignoredisk --only-use=$instdisk" >> $partfile
 if [ `uname -m` = "ppc64" -o `uname -m` = "ppc64le" ]; then
 	echo 'part None --fstype "PPC PReP Boot" --ondisk '$instdisk' --size 8' >> $partfile
@@ -111,6 +134,7 @@ echo "volgroup VGsystem pv.system"
 echo "logvol /    --vgname=VGsystem --name=LVroot --size $sz_root --fstype $FSTYPE"
 echo "logvol /tmp --vgname=VGsystem --name=LVtmp  --size $sz_tmp  --fstype $FSTYPE"
 echo "logvol /var --vgname=VGsystem --name=LVvar  --size $sz_var  --fstype $FSTYPE"
+echo "logvol /var/lib --vgname=VGsystem --name=LVvarlib  --size $sz_varlib  --fstype $FSTYPE"
 ) >> $partfile
 
 #specify "bootloader" configuration in "/tmp/partitionfile" if there is no user customized partition file
