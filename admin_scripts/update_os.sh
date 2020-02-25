@@ -1,5 +1,8 @@
 #!/bin/bash
 
+trap "exit 1" TERM
+export XCAT_TOOLS_TOP_PID=$BASHPID
+
 BASE=___INSTALL_DIR___
 CLIENT_SCRIPTS=$BASE/client_scripts
 LIB=$BASE/libs
@@ -48,6 +51,7 @@ pause() {
 
 usage() {
     cat <<ENDHERE
+
 $PRG
     Copy os-upgrade scripts to the client node and (optionally) run them.
 

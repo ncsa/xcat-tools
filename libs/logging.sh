@@ -5,7 +5,7 @@ ERR=1
 
 croak() {
   echo "ERROR $*" >&2
-  kill -s TERM $BASHPID
+  kill -s TERM ${XCAT_TOOLS_TOP_PID:-$BASHPID}
   exit 99
 }
 

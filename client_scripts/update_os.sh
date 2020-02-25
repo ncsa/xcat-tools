@@ -1,5 +1,8 @@
 #!/bin/bash
 
+trap "exit 1" TERM
+export XCAT_TOOLS_TOP_PID=$BASHPID
+
 BASE=$( dirname "$0" )
 PRG="$0"
 LIB=$BASE/libs

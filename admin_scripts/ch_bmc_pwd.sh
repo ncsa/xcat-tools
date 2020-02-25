@@ -2,6 +2,8 @@
 
 # By JDR with some code borrowed from AJL's 'rebuild' and 'mracadm' scripts.
 
+trap "exit 1" TERM
+export XCAT_TOOLS_TOP_PID=$BASHPID
 
 # Define global variables.
 BASE=___INSTALL_DIR___
