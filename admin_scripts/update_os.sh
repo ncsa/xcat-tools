@@ -121,16 +121,21 @@ done
 # Build nodelist from cmdline args
 nodelist=( $( build_nodelist "$@" ) )
 
-tmpdir=$( mktemp -d )
-log "OUTPUT LOGDIR: $tmpdir"
+if [[ $STARTUPDATES -eq $YES ]] ; then
+    tmpdir=$( mktemp -d )
+    log "OUTPUT LOGDIR: $tmpdir"
+fi
+
 for node in "${nodelist[@]}"; do
-    log "Start upgrade on $node"
-    logfn="$tmpdir/$node"
-    (
+    log "Copy client scripts to $node"
     sync_files_to_tgt $node
-    [[ $STARTUPDATES -eq $YES ]] && \
-        $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh"
-    ) &>"$logfn" &
+    if [[ $STARTUPDATES -eq $YES ]] ; then
+        log "Starting update on $node"
+        logfn="$tmpdir/$node"
+        (
+            $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh"
+        ) &>"$logfn" &
+    fi
     [[ $PAUSE -gt 0 ]] && pause $PAUSE
 done
-log "OUTPUT LOGDIR: $tmpdir"
+[[ $STARTUPDATES -eq $YES ]] && log "OUTPUT LOGDIR: $tmpdir"
