@@ -1,14 +1,11 @@
 #!/bin/bash
 
-DEBUG=0
-
 BASE=___INSTALL_DIR___
-LIB=$BASE/libs
 CLIENT_SCRIPTS=$BASE/client_scripts
+LIB=$BASE/libs
 TGT_DIR=/root/update_os
 XCATBIN=/opt/xcat/bin
-#TODO - make pause time adjustable via cmdline option
-PAUSE=10
+PRG="$0"
 
 # Import libs
 imports=( logging build_nodelist )
@@ -22,6 +19,7 @@ for f in "${imports[@]}"; do
 done
 
 sync_files_to_tgt() {
+    [[ $DEBUG -eq $YES ]] && set -x
     local _tgtnode="$1"
     local _tmpfn=$(mktemp)
     $XCATBIN/xdsh "$_tgtnode" "rm -rf $TGT_DIR"
@@ -36,7 +34,7 @@ ENDSYNCFILE
 
 
 pause() {
-    [[ $DEBUG -eq 1 ]] && set +x #turn off debugging output for this function
+    [[ $DEBUG -eq $YES ]] && set +x #turn off debugging output for this function
     local _count=10
     [[ $1 -gt 0 ]] && _count=$1
     echo -n "Pause $_count "
@@ -45,23 +43,90 @@ pause() {
         echo -n .
     done
     echo
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
 }
 
-[[ $DEBUG -eq 1 ]] && set -x
+usage() {
+    cat <<ENDHERE
+$PRG
+    Copy os-upgrade scripts to the client node and (optionally) run them.
+
+USAGE:
+    $PRG [OPTIONS]
+
+OPTIONS:
+    -h --help
+        print help message and exit
+    -d --debug
+        Enable debug output
+    -n --norun
+        Copy scripts to remote node but don't run anything
+        (Default = copy scripts and run them)
+        (Note: also sets pause to 0, can re-enable by explicitly setting --pause)
+    -p --pause
+        Pause X seconds between nodes (Default = $PAUSE)
+        (Helpful to stagger yum updates for large numbers of nodes
+        if nodes all pull yum updates from the same internal server)
+    -q --quiet
+        Disable all verbose and debug output
+        (Default = enable verbose output)
+
+ENDHERE
+}
+
+# Customizable parameters
+DEBUG=$NO
+PAUSE=10
+STARTUPDATES=$YES
+VERBOSE=$YES
+
+# Process cmdline options
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -d|--debug)
+            DEBUG=$YES
+            ;;
+        -n|--norun)
+            STARTUPDATES=$NO
+            PAUSE=0
+            ;;
+        -p|--pause)
+            shift
+            PAUSE=$1
+            ;;
+        -q|--quiet)
+            VERBOSE=$NO
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        *)
+            ENDWHILE=1
+            break
+            ;;
+    esac
+    shift
+done
+
+[[ $DEBUG -eq $YES ]] && set -x
 
 # Build nodelist from cmdline args
 nodelist=( $( build_nodelist "$@" ) )
 
 tmpdir=$( mktemp -d )
-echo "OUTPUT LOGDIR: $tmpdir"
+log "OUTPUT LOGDIR: $tmpdir"
 for node in "${nodelist[@]}"; do
-    echo Start upgrade on $node
+    log "Start upgrade on $node"
     logfn="$tmpdir/$node"
     (
     sync_files_to_tgt $node
-    $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh"
+    [[ $STARTUPDATES -eq $YES ]] && \
+        $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh"
     ) &>"$logfn" &
-    pause $PAUSE
+    [[ $PAUSE -gt 0 ]] && pause $PAUSE
 done
-echo "OUTPUT LOGDIR: $tmpdir"
+log "OUTPUT LOGDIR: $tmpdir"
