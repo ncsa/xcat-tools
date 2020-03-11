@@ -2,14 +2,18 @@
 
 ###
 # Description: Configure Puppet agent
-#   0. Assume appropriate yum repos are already configured
-#   1. Install puppet-agent RPM
-#   2. Re-install, if exist, pre-existing puppet SSL certs
-# Note: Puppet agent service is started/enabled via puppet_run
+# 1. Install puppet-agent
+#     1. Check if puppet agent is present: yes = stop
+#     2. Check if puppet repo is configured: yes = install puppet-agent
+#     3. Check if puppet repo available in /install/postscripts/repos
+#     4. Check if puppet-agent rpm is available in /install/postscripts/custom/rpms
+# 2. Re-install, if exist, pre-existing puppet SSL certs
+# Note: Puppet agent service is started/enabled via puppet_run.
+#       Some use cases require puppet run to happen at a later time.
 #
 # Usage:
 #      1. use $PUPPETMASTER or $MASTER as the puppet server
-#            updatenode <noderange> -P "custom/puppet_configure" [CUSTOM_ENVIRONMENT_WHEN_NO_ENC]
+#         updatenode <noderange> -P "custom/puppet_configure" [CUSTOM_ENVIRONMENT_WHEN_NO_ENC]
 #
 # Source: https://github.com/ncsa/xcat-tools
 ###
@@ -27,6 +31,8 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 PUPPET=/opt/puppetlabs/bin/puppet
 BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
 CA=ca.pem
+REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
+RPM_SEARCH_LOCATIONS=( /xcatpost/custom/rpms )
 
 
 #
@@ -81,6 +87,58 @@ restore_certs() {
 }
 
 
+is_agent_installed() {
+    logr "is agent installed"
+    [[ -f "$PUPPET" ]]
+}
+
+
+is_repo_installed() {
+    logr "is repo installed"
+    yum repolist | grep 'Puppet \(\w \)\?Repo'
+}
+
+
+install_repo() {
+    logr "looking for puppet repo to install"
+    rc=1
+    for repodir in "${REPO_DIR_SEARCH_LOCATIONS[@]}"; do
+        if [[ -f "$repodir"/repodata/repomd.xml ]]; then
+            logr "installing puppet repo: '$repodir'"
+            repofile=/etc/yum.repos.d/puppet.repo
+            >$repofile echo "[puppet]"
+            >>$repofile echo "name=Puppet Repository"
+            >>$repofile echo "baseurl=file://$repodir"
+            >>$repofile echo "enabled=1"
+            >>$repofile echo "gpgcheck=0"
+            rc=0
+            break
+        fi
+    done
+    return $rc
+}
+
+
+install_from_repo() {
+    logr "attempting install puppet agent from repo"
+    is_repo_installed || install_repo 
+    is_repo_installed && yum -y install puppet-agent
+}
+
+
+install_rpm() {
+    logr "looking for a puppet-agent rpm to install"
+    rc=1
+    for dir in "${RPM_SEARCH_LOCATIONS[@]}"; do
+        rpm=$( find "$dir" -name 'puppet-agent*rpm' -print | sort -V | tail -1 )
+        logr "installing puppet-agent rpm from: '$rpm'"
+        yum install -y "$rpm"
+        rc=$?
+        break
+    done
+}
+
+
 #
 # DO WORK
 #
@@ -92,9 +150,9 @@ restore_certs() {
     shift
 }
 
-logr "install puppet-agent RPM via Yum"
-yum -y install puppet-agent
-logr "install puppet-agent RPM via Yum ... OK"
+is_agent_installed || install_from_repo
+is_agent_installed || install_rpm
+is_agent_installed || croak "Failed to install puppet-agent"
 
 logr "ensure $MASTER:$INSTALLDIR is mounted"
 /xcatpost/mountinstall || croak 'mountinstall returned non-zero'
@@ -102,8 +160,6 @@ logr "ensure $MASTER:$INSTALLDIR is mounted ... OK"
 
 restore_certs
 
-# TODO: this should be optional to allow for default hostname 'puppet' to be
-# used if DNS is configured properly.
 set_server
 
 logr "end of puppet_configure on OS '$OSVER' on node '$NODE'"
