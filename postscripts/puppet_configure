@@ -13,7 +13,7 @@
 #
 # Usage:
 #      1. use $PUPPETMASTER or $MASTER as the puppet server
-#         updatenode <noderange> -P "custom/puppet_configure" [CUSTOM_ENVIRONMENT_WHEN_NO_ENC]
+#         updatenode <noderange> -P "custom/puppet_configure"
 #
 # Source: https://github.com/ncsa/xcat-tools
 ###
@@ -149,13 +149,6 @@ install_rpm() {
 
 
 # DO WORK
-
-# Allow for custom environment to be specified on cmdline
-# (this won't do anything if using ENC at your site)
-[[ $# -gt 0 ]] && {
-    REQUESTED_ENV="$1"
-    shift
-}
 
 is_agent_installed || install_from_repo
 is_agent_installed || install_rpm
