@@ -18,26 +18,22 @@
 # Source: https://github.com/ncsa/xcat-tools
 ###
 
-#
+
 # PREP
-#
 PRG=$( basename $0 )
 logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
 
-#
 # DEFAULT SETTINGS
-#
 PUPPET=/opt/puppetlabs/bin/puppet
 BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
 CA=ca.pem
+REPO_BASEURL=   #set this to explicitly set repo baseurl
 REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
 RPM_SEARCH_LOCATIONS=( /xcatpost/custom/rpms )
 
 
-#
 # FUNCTIONS
-#
 logr() {
   logger -t xcat -p local4.info "$*"
   echo "$*"
@@ -90,32 +86,44 @@ restore_certs() {
 is_agent_installed() {
     logr "is agent installed"
     [[ -f "$PUPPET" ]]
+    local _rc=$?
+    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
+    return $_rc
 }
 
 
 is_repo_installed() {
     logr "is repo installed"
     yum repolist | grep 'Puppet \(\w \)\?Repo'
+    local _rc=$?
+    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
+    return $_rc
 }
 
 
 install_repo() {
-    logr "looking for puppet repo to install"
-    rc=1
-    for repodir in "${REPO_DIR_SEARCH_LOCATIONS[@]}"; do
-        if [[ -f "$repodir"/repodata/repomd.xml ]]; then
-            logr "installing puppet repo: '$repodir'"
-            repofile=/etc/yum.repos.d/puppet.repo
-            >$repofile echo "[puppet]"
-            >>$repofile echo "name=Puppet Repository"
-            >>$repofile echo "baseurl=file://$repodir"
-            >>$repofile echo "enabled=1"
-            >>$repofile echo "gpgcheck=0"
-            rc=0
-            break
-        fi
-    done
-    return $rc
+    local _rc=1
+    local _baseurl="$REPO_BASEURL"
+    if [[ -z "$_baseurl" ]] ; then
+        # REPO_BASEURL was empty, so try scanning repo dir locations
+        for repodir in "${REPO_DIR_SEARCH_LOCATIONS[@]}"; do
+            if [[ -f "$repodir"/repodata/repomd.xml ]]; then
+                _baseurl="file://$repodir"
+                break
+            fi
+        done
+    fi
+    if [[ -n "$_baseurl" ]] ; then
+        logr "installing puppet repo with baseurl: '$_baseurl'"
+        repofile=/etc/yum.repos.d/puppet.repo
+        >$repofile echo "[puppet]"
+        >>$repofile echo "name=Puppet Repository"
+        >>$repofile echo "baseurl=$_baseurl"
+        >>$repofile echo "enabled=1"
+        >>$repofile echo "gpgcheck=0"
+        _rc=0
+    fi
+    return $_rc
 }
 
 
@@ -128,20 +136,19 @@ install_from_repo() {
 
 install_rpm() {
     logr "looking for a puppet-agent rpm to install"
-    rc=1
+    local _rc=1
     for dir in "${RPM_SEARCH_LOCATIONS[@]}"; do
         rpm=$( find "$dir" -name 'puppet-agent*rpm' -print | sort -V | tail -1 )
         logr "installing puppet-agent rpm from: '$rpm'"
         yum install -y "$rpm"
-        rc=$?
+        _rc=$?
         break
     done
+    return $_rc
 }
 
 
-#
 # DO WORK
-#
 
 # Allow for custom environment to be specified on cmdline
 # (this won't do anything if using ENC at your site)
