@@ -60,8 +60,7 @@ puppet_agent_runonce() {
 
 puppet_agent_enable() {
     logr "Enabling puppet agent service"
-    $PUPPET resource service puppet ensure=running
-    $PUPPET resource service puppet enable=true
+    $PUPPET resource service puppet ensure=running enable=true
     logr "Enabling puppet agent service ... OK"
 }
 
@@ -91,6 +90,7 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   case $1 in
     -h|--help)
         print_usage
+        exit 0
         ;;
     -n|--num_runs)
         NUM_RUNS="$2"
@@ -104,10 +104,11 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
         ENDWHILE=1
         ;;
     -*)
-        echo "Invalid option '$1'"; exit 1
+        croak "Invalid option '$1'"
         ;;
      *)
-        ENDWHILE=1; break
+        ENDWHILE=1
+        break
         ;;
   esac
   shift
