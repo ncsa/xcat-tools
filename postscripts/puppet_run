@@ -5,7 +5,9 @@
 #              Expects that puppet agent is already installed and configured.
 #              See also: postscripts/puppet_configure (in this repo)
 # Usage:
-#      1. updatenode <noderange> -P "puppet_run"
+#      1. updatenode <noderange> -P "puppet_run [OPTS] [ENV_NAME]"
+#
+# Note: ENV_NAME will be ignored by puppet master when using ENC
 #
 # Source: https://github.com/ncsa/xcat-tools
 ###
@@ -17,6 +19,12 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
 
 # DEFAULT SETTINGS
+declare -A DEFAULTS
+DEFAULTS[NUM_RUNS]=1
+DEFAULTS[PAUSE_SECS]=5
+
+
+# GLOBAL SETTINGS
 PUPPET=/opt/puppetlabs/bin/puppet
 AGENTLOG=/var/log/xcat/puppet_agent.log
 
@@ -57,8 +65,53 @@ puppet_agent_enable() {
     logr "Enabling puppet agent service ... OK"
 }
 
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    puppet_run [OPTIONS] [ENV_NAME]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    -n | --num_runs <N>
+        Run agent N times before exiting
+    -p | --pause_secs <N>
+        Pause N seconds between multiple agent runs
+
+Note: ENV_NAME will be ignored by puppet master when using ENC
+ENDHERE
+}
+
 
 # DO WORK
+NUM_RUNS=${DEFAULTS[NUM_RUNS]}
+PAUSE_SECS=${DEFAULTS[PAUSE_SECS]}
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        ;;
+    -n|--num_runs)
+        NUM_RUNS="$2"
+        shift
+        ;;
+    -p|--pause_secs)
+        PAUSE_SECS="$2"
+        shift
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        echo "Invalid option '$1'"; exit 1
+        ;;
+     *)
+        ENDWHILE=1; break
+        ;;
+  esac
+  shift
+done
 
 # Allow for custom environment to be specified on cmdline
 # (this won't do anything if using ENC at your site)
@@ -67,13 +120,12 @@ puppet_agent_enable() {
     shift
 }
 
-logr "puppet agent first run"
-puppet_agent_runonce $REQUESTED_ENV
-logr "puppet agent first run ... OK"
-sleep 5
-logr "puppet agent second run"
-puppet_agent_runonce $REQUESTED_ENV
-logr "puppet agent second run ... OK"
+for i in $(seq $NUM_RUNS) ; do
+    logr "Starting puppet agent run # $i"
+    puppet_agent_runonce $REQUESTED_ENV
+    logr "End of puppet agent run # $i"
+    [[ $i -lt $NUM_RUNS ]] && sleep $PAUSE_SECS
+done
 
 puppet_agent_enable
 
