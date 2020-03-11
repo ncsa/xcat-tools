@@ -2,30 +2,26 @@
 
 ###
 # Description: Run Puppet and then start/enable as a service
-
+#              Expects that puppet agent is already installed and configured.
+#              See also: postscripts/puppet_configure (in this repo)
 # Usage:
 #      1. updatenode <noderange> -P "puppet_run"
 #
 # Source: https://github.com/ncsa/xcat-tools
 ###
 
-#
+
 # PREP
-#
 PRG=$( basename $0 )
 logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
 
-#
 # DEFAULT SETTINGS
-#
 PUPPET=/opt/puppetlabs/bin/puppet
 AGENTLOG=/var/log/xcat/puppet_agent.log
 
 
-#
 # FUNCTIONS
-#
 logr() {
   logger -t xcat -p local4.info "$*"
   echo "$*"
@@ -62,9 +58,7 @@ puppet_agent_enable() {
 }
 
 
-#
 # DO WORK
-#
 
 # Allow for custom environment to be specified on cmdline
 # (this won't do anything if using ENC at your site)
