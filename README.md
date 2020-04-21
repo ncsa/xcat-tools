@@ -4,17 +4,23 @@ Useful tools for xCAT
 # Installation / Update
 
 ### Quick Install (into $HOME/xcat-tools)
-1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh | bash`
+```bash
+export QS_REPO=https://github.com/ncsa/xcat-tools
+curl https://raw.githubusercontent.com/andylytical/quickstart/master/quickstart.sh | bash
+```
 
-### Customize install dir
-1. `export XCAT_TOOLS_INSTALL_DIR=/custom/install/path`
-1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/master/quickstart.sh | bash`
+### Customizable install options
+- Pull from a branch (not master)
+  ```bash
+  export QS_GIT_BRANCH=branch_name`
+  ```
+- Specify a custom install location (not $HOME/xcat-tools)
+  ```bash
+  export XCAT_TOOLS_INSTALL_DIR=/custom/install/path
+  ```
 
 :information_source: NOTE: Install also touches `$HOME/.bashrc` and `$HOME/.bashrc.d`, regardless of XCAT_TOOLS_INSTALL_DIR
 
-### Use different git branch
-1. `export XCAT_TOOLS_GIT_BRANCH=branch_name`
-1. `curl https://raw.githubusercontent.com/ncsa/xcat-tools/$XCAT_TOOLS_GIT_BRANCH/quickstart.sh | bash`
 
 # Usage
 ## Postscripts

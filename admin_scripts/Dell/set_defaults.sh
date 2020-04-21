@@ -8,7 +8,7 @@ LIB=$BASE/libs
 PRG=$( basename $0 )
 
 # Import libs
-imports=( logging racadm questions )
+imports=( logging racadm node bmc questions )
 for f in "${imports[@]}"; do
     srcfn="${LIB}/${f}.sh"
     [[ -f "$srcfn" ]] || {

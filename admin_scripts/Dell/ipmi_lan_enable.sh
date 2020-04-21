@@ -5,7 +5,7 @@ LIB=$BASE/libs
 
 
 # Import libs
-imports=( logging racadm )
+imports=( logging racadm node bmc )
 for f in "${imports[@]}"; do
     srcfn="${LIB}/${f}.sh"
     [[ -f "$srcfn" ]] || {

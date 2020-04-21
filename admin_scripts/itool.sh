@@ -8,7 +8,7 @@ LIB=$BASE/libs
 PRG=$( basename $0 )
 
 # Import libs
-imports=( logging build_nodelist )
+imports=( logging build_nodelist node bmc )
 for f in "${imports[@]}"; do
     srcfn="${LIB}/${f}.sh"
     [[ -f "$srcfn" ]] || {
@@ -31,12 +31,15 @@ get_imagename() {
 
 
 get_ipmi_credentials() {
-    # eval defines variables: bmc, bmcusername, bmcpassword
-    # as returned by the xCAT table "ipmi"
-    eval $( lsdef -t node -o $1 -i bmc,bmcpassword,bmcusername | tail -n+2 )
+#    # eval defines variables: bmc, bmcusername, bmcpassword
+#    # as returned by the xCAT table "ipmi"
+#    eval $( lsdef -t node -o $1 -i bmc,bmcpassword,bmcusername | tail -n+2 )
+    bmc=$( get_bmc_ip "$n" )
     [[ -z "$bmc" ]] && croak "unknown ip for '$n'"
-    [[ -z "$bmcpassword" ]] && croak "unknown ip for '$n'"
-    [[ -z "$bmcusername" ]] && croak "unknown ip for '$n'"
+    bmcpassword=$( get_bmc_password "$n" )
+    [[ -z "$bmcpassword" ]] && croak "unknown password for '$n'"
+    bmcusername=$( get_bmc_username "$n" )
+    [[ -z "$bmcusername" ]] && croak "unknown username for '$n'"
 }
 
 

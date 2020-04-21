@@ -1,11 +1,21 @@
 racadm() {
+    # run a racadm command on a node
+    # INPUT:
+    #   1. Nodename
+    # OUTPUT:
+    #   1. output from the racadm tool
     [[ $DEBUG -eq $YES ]] && set -x
-    # eval defines variables: bmc, bmcusername, bmcpassword
-    # as returned by the xCAT table "ipmi"
-    eval $( lsdef -t node -o $1 -i bmc,bmcpassword,bmcusername | tail -n+2 )
-    shift
-    export SSHPASS="$bmcpassword"
-    sshpass -e ssh -l $bmcusername $bmc -- racadm "$*" | grep -v 'efault \(user\|password\)'
+    local _ip _usr _pwd
+    local _node="$1"; shift
+    [[ -z "$_node" ]] && croak "racadm: missing nodename"
+    _ip=$( get_bmc_ip "$_node" )
+    [[ -z "$_ip" ]] && croak "unknown ip for '$_node'"
+    _usr=$( get_bmc_username "$_node" )
+    [[ -z "$_usr" ]] && croak "unknown username for '$_node'"
+    _pwd=$( get_bmc_password "$_node" )
+    [[ -z "$_ip" ]] && croak "unknown password for '$_node'"
+    SSHPASS="$_pwd" sshpass -e ssh -l $_usr $_ip -- racadm "$*" \
+    | grep -v 'efault \(user\|password\)'
     unset SSHPASS
 }
 
