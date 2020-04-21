@@ -20,10 +20,7 @@ done
 
 
 # iDRAC settings
-declare -A _SETTINGS_RW=(
-    ['BIOS.ProcSettings.LogicalProc']='Disabled' \
-    ['BIOS.SysProfileSettings.SysProfile']='PerfOptimized' \
-)
+declare -A _SETTINGS_RW
 
 # List of FQDD keys to create jobqueues
 # (used by functions in racadm)
@@ -37,11 +34,24 @@ RETRY=2
 #
 
 
+read_config() {
+    [[ $DEBUG -eq $YES ]] && set -x
+    # Load settings from config file
+    local _conf_file="$1"
+    [[ -z "$_conf_file" ]] && croak "read_config: missing conf_file"
+    oldIFS="$IFS"; IFS='='
+    while read -a parts; do
+        _SETTINGS_RW["${parts[0]}"]="${parts[1]}"
+    done
+    IFS="$oldIFS"
+}
+
+
 enable_bios_bootmode() {
     [[ $DEBUG -eq $YES ]] && set -x
     # set bootmode to Bios
     _SETTINGS_RW['BIOS.BiosBootSettings.BootMode']='Bios'
-    _SETTINGS_RW['BIOS.BiosBootSettings.BootSeq']='HardDisk.List.1-1'
+    #_SETTINGS_RW['BIOS.BiosBootSettings.BootSeq']='HardDisk.List.1-1'
 }
 
 
@@ -118,7 +128,7 @@ $PRG
     Note that one of -b (bios) or -u (uefi) must be specified.
 
 Usage:
-    $PRG [OPTIONS] {-b|-u} <NODE>
+    $PRG [OPTIONS] {-b|-u} {-c <CONFIG_FILE>} <NODE>
 
 PARAMETERS:
     NODE   A node name, already configured with ipmi settings in xCAT
@@ -126,12 +136,17 @@ PARAMETERS:
 OPTIONS:
   --help,-h      print help message and exit
   --bios,-b      Choose BIOS boot mode type
+  --config,-c    Config file to use for settings and values (Formatting: See NOTES)
   --clearall     Clear all pending changes and jobqueues
   --debug        Debug mode
   --dryrun,-n    Dry-run; Show existing values, but don't try to set anything
   --uefi,-u      Choose UEFI boot mode type
   --verbose,-v   Verbose mode
   --yes|-y       Answer yes to all prompts
+
+NOTES:
+* Config file format is KEY=value, one setting per line.
+  (eg: BIOS.ProcSettings.LogicalProc=Enabled )
 
 ENDHERE
 }
@@ -152,6 +167,10 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
         ;;
     --bios|-b)
         ENABLE_BIOS_BOOT_MODE=$YES
+        ;;
+    --config|-c)
+        CONFIG_FILE=$2
+        shift
         ;;
     --clearall)
         CLEARALL=$YES
@@ -177,11 +196,11 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   shift
 done
 
-[[ $ENABLE_UEFI_BOOT_MODE -eq $NO && $ENABLE_BIOS_BOOT_MODE -eq $NO ]] && \
-croak "Missing 'boot mode' type"
+[[ $ENABLE_UEFI_BOOT_MODE -eq $NO && $ENABLE_BIOS_BOOT_MODE -eq $NO ]] \
+&& croak "Missing 'boot mode' type"
 
-[[ $ENABLE_UEFI_BOOT_MODE -eq $YES && $ENABLE_BIOS_BOOT_MODE -eq $YES ]] && \
-croak "Choose exactly one 'boot mode' type"
+[[ $ENABLE_UEFI_BOOT_MODE -eq $YES && $ENABLE_BIOS_BOOT_MODE -eq $YES ]] \
+&& croak "Choose exactly one 'boot mode' type"
 
 [[ $# -lt 1 ]] && croak "Too few cmdline argurments.  Need 'nodename'"
 NODE=$1
