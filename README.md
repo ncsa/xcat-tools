@@ -12,7 +12,7 @@ curl https://raw.githubusercontent.com/andylytical/quickstart/master/quickstart.
 ### Customizable install options
 - Pull from a branch (not master)
   ```bash
-  export QS_GIT_BRANCH=branch_name`
+  export QS_GIT_BRANCH=branch_name
   ```
 - Specify a custom install location (not $HOME/xcat-tools)
   ```bash

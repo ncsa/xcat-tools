@@ -7,6 +7,7 @@
 BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 XCATBIN=/opt/xcat/bin
+XDSH=$XCATBIN/xdsh
 XDCP=$XCATBIN/xdcp
 NODELS=$XCATBIN/nodels
 SSLDIR=/etc/puppetlabs/puppet/ssl
@@ -31,20 +32,27 @@ done
 # FUNCTIONS
 ###
 
+client_has_certs() {
+    # Check if client has ssl certs to be backed up
+    node=$1
+    xdsh $node -z "ls $SSLDIR/certs"
+}
+
 get_client_certs() {
+  # copy ssl dir (recursively) from NODE
   [[ $DEBUG -eq 1 ]] && set -x
   node=$1
+  client_has_certs $node || return 1
   $XDCP $node -P -R $SSLDIR $tmpdir
+  hostdir=${tmpdir}/ssl._$n
+  mv "$hostdir" "$BKUP_SSLDIR/$node"
 }
 
 
-do_client_certs_exist() {
+do_bkup_certs_exist() {
   [[ $DEBUG -eq 1 ]] && set -x
   node=$1
-  retval=1
-  count=$(find $BKUP_SSLDIR -name "*${node}.*.pem"  | wc -l)
-  [[ $count -gt 0 ]] && retval=0
-  return $retval
+  [[ -d "$BKUP_SSLDIR/$node/certs" ]]
 }
 
 
@@ -105,7 +113,7 @@ shift $((OPTIND-1))
 # ENABLE TRACING IF DEBUG REQUESTED
 [[ $DEBUG -eq 1 ]] && set -x
 
-[[ -d $BKUP_SSLDIR ]] || mkdir -p $BKUP_SSLDIR/{certs,private_keys,public_keys}
+[[ -d $BKUP_SSLDIR ]] || mkdir -p $BKUP_SSLDIR
 
 if [[ $# -lt 1 ]] ; then
   nodelist=( $( $NODELS all) )
@@ -118,7 +126,7 @@ fi
 for n in "${nodelist[@]}" ; do
   log "Node: '$n'"
   if [[ $FORCE -ne 1 ]] ; then
-    do_client_certs_exist $n && {
+    do_bkup_certs_exist $n && {
       log "OK" 
       continue
     }
@@ -128,36 +136,12 @@ for n in "${nodelist[@]}" ; do
     warn "Failed to get client certs from node '$n'"
     continue
   }
-
-  hostdir=${tmpdir}/ssl._$n
-  for subdir in certs private_keys public_keys; do
-    srcdir=${hostdir}/$subdir
-    fn=$( find $srcdir -name "*${n}.*.pem" -printf '%f' )
-    if [[ -z "$fn" ]] ; then
-      warn "No pem file found in '$srcdir'"
-      continue
-    fi
-    src=$srcdir/$fn
-    tgt=$BKUP_SSLDIR/$subdir/$fn
-    mv $src $tgt
-    chmod 644 $tgt
-  done
-  log $( find $BKUP_SSLDIR -name $fn -exec ls -l {} \; )
 done
-
-# If ca.pem is not found, copy the one from this node
-# (this will work only if ca.pem from localhost is the same as remote host)
-# (but better than nothing, since without ca.pem, nothing will work)
-[[ -f $BKUP_SSLDIR/certs/ca.pem ]] || \
-cp $SSLDIR/certs/ca.pem $BKUP_SSLDIR/certs/ca.pem
 
 rm -rf $tmpdir
 
-#root@cg-adm01:~/admin-scripts# find /install/files/compute/var/lib/puppet/ssl -name '*cmp09*'
-#/install/files/compute/var/lib/puppet/ssl/private_keys/cg-cmp09.ncsa.illinois.edu.pem
-#/install/files/compute/var/lib/puppet/ssl/certs/cg-cmp09.ncsa.illinois.edu.pem
-#/install/files/compute/var/lib/puppet/ssl/public_keys/cg-cmp09.ncsa.illinois.edu.pem
 
+### DIR STRUCTURE AFTER xdcp
 #/tmp/tmp.D6jnyJyy07
 #└── ssl._cg-cmp08
 #    ├── certificate_requests

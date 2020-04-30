@@ -26,7 +26,7 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
 # DEFAULT SETTINGS
 PUPPET=/opt/puppetlabs/bin/puppet
-BKUP_SSLDIR=/install/files/compute/var/lib/puppet/ssl
+BKUP_SSLDIR="/install/files/compute/var/lib/puppet/ssl/$NODE"
 CA=ca.pem
 REPO_BASEURL=   #set this to explicitly set repo baseurl
 REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
@@ -58,26 +58,15 @@ set_server() {
 
 
 restore_certs() {
-    logr "copying puppet certs from the master."
+    logr "copying puppet certs from xCAT master."
     SSLDIR=$( $PUPPET config print ssldir )
     set -x
-    for d in certs public_keys private_keys; do
-        pemlist=( $( ls $BKUP_SSLDIR/$d/*${NODE}.*.pem ) )
-        [[ ${#pemlist[@]} -gt 1 ]] && croak "Multiple PEM files found for this host"
-        local _pemfile="${pemlist[0]}"
-        if [[ -n "$_pemfile" ]] ; then
-            if [[ -f "$_pemfile" ]] ; then
-                logr "Found PEM file '$_pemfile'"
-                logr "copying cert '$_pemfile'"
-                mkdir -p $SSLDIR/$d
-                cp "$_pemfile" $SSLDIR/$d/.
-            fi
-        fi
-    done
-    logr "copying CA cert '$BKUP_SSLDIR/certs/$CA'"
-    mkdir -p $SSLDIR/certs
-    cp $BKUP_SSLDIR/certs/$CA $SSLDIR/certs/.
-    ls -R $SSLDIR
+    logr "Checking for backup SSL dir: '$BKUP_SSLDIR'."
+    if [[ -d $BKUP_SSLDIR ]] ; then
+        rsync -v -r "$BKUP_SSLDIR/" "$SSLDIR/"
+    else
+        logr "backup SSL dir not found for this node, Skipping."
+    fi
     set +x
     logr "copying puppet certs from the master ... OK"
 }
