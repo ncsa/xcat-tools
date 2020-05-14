@@ -42,7 +42,7 @@ read_config() {
     oldIFS="$IFS"; IFS='='
     while read -a parts; do
         _SETTINGS_RW["${parts[0]}"]="${parts[1]}"
-    done
+    done <"$_conf_file"
     IFS="$oldIFS"
 }
 
@@ -215,6 +215,8 @@ fi
 
 [[ $ENABLE_UEFI_BOOT_MODE -eq $YES ]] && enable_uefi_bootmode
 [[ $ENABLE_BIOS_BOOT_MODE -eq $YES ]] && enable_bios_bootmode
+
+[[ -n "$CONFIG_FILE" ]] && read_config "$CONFIG_FILE"
 
 if [[ $DRYRUN -eq $YES ]] ; then
     get_settings
