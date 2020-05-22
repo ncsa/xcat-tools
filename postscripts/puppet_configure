@@ -7,12 +7,23 @@
 #     2. Check if puppet repo is configured: yes = install puppet-agent
 #     3. Check if puppet repo available in /install/postscripts/repos
 #     4. Check if puppet-agent rpm is available in /install/postscripts/custom/rpms
-# 2. Re-install, if exist, pre-existing puppet SSL certs
+#
 # Note: Puppet agent service is started/enabled via puppet_run.
 #       Some use cases require puppet run to happen at a later time.
 #
+# Note: This script depends on
+#       - backup-node_configs
+#         + to backup puppet config file and puppet ssl dir
+#       - restore-node_configs
+#         + to restore those things above
+#
+# Note: If config file is less than 1 hour old, assume it was restored from backup
+#       and do NOT set server.
+#       Contrariwise, if config file is more than 1 hour old, assume this is a new
+#       node and set server according to PUPPET_MASTER env var or $MASTER env var
+#
 # Usage:
-#      1. use $PUPPETMASTER or $MASTER as the puppet server
+#      1. use $PUPPETMASTER or $MASTER as the puppet server (for new nodes only)
 #         updatenode <noderange> -P "custom/puppet_configure"
 #
 # Source: https://github.com/ncsa/xcat-tools
@@ -26,11 +37,11 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 
 # DEFAULT SETTINGS
 PUPPET=/opt/puppetlabs/bin/puppet
-BKUP_SSLDIR="/install/files/compute/var/lib/puppet/ssl/$NODE"
-CA=ca.pem
-REPO_BASEURL=   #set this to explicitly set repo baseurl
+REPO_BASEURL=   #explicitly set repo baseurl
 REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
 RPM_SEARCH_LOCATIONS=( /xcatpost/custom/rpms )
+NOW=$(date +%s)
+MAX_CONF_AGE=3600
 
 
 # FUNCTIONS
@@ -48,27 +59,22 @@ croak() {
 
 
 set_server() {
-    server=$MASTER
-    [[ -n "$PUPPETMASTER" ]] && server=$PUPPETMASTER
-    logr "setting server set to '$server' in local config"
-    $PUPPET config set server "$server" --section agent
-    logr "verify server setting is saved in local config"
-    $PUPPET config print server --section agent
-}
-
-
-restore_certs() {
-    logr "copying puppet certs from xCAT master."
-    SSLDIR=$( $PUPPET config print ssldir )
-    set -x
-    logr "Checking for backup SSL dir: '$BKUP_SSLDIR'."
-    if [[ -d $BKUP_SSLDIR ]] ; then
-        rsync -v -r "$BKUP_SSLDIR/" "$SSLDIR/"
+    logr "enter '$FUNCNAME'..."
+    let "min_conf_date = $NOW - $MAX_CONF_AGE"
+    config_date=$(date -r /etc/puppetlabs/puppet/config +%s)
+    if [[ $config_date -lt $min_conf_date ]] ; then
+        # Assume config is from rpm (it was not restored from a backup)
+        # ie: this must be a new node, set server accordingly
+        server=$MASTER
+        [[ -n "$PUPPETMASTER" ]] && server=$PUPPETMASTER
+        logr "setting server set to '$server' in local config"
+        $PUPPET config set server "$server" --section agent
+        logr "verify server setting is saved in local config"
+        $PUPPET config print server --section agent
     else
-        logr "backup SSL dir not found for this node, Skipping."
+        logr "found a recently restored config file, not setting server"
     fi
-    set +x
-    logr "copying puppet certs from the master ... OK"
+    logr "... exit '$FUNCNAME'"
 }
 
 
@@ -142,12 +148,6 @@ install_rpm() {
 is_agent_installed || install_from_repo
 is_agent_installed || install_rpm
 is_agent_installed || croak "Failed to install puppet-agent"
-
-logr "ensure $MASTER:$INSTALLDIR is mounted"
-/xcatpost/mountinstall || croak 'mountinstall returned non-zero'
-logr "ensure $MASTER:$INSTALLDIR is mounted ... OK"
-
-restore_certs
 
 set_server
 

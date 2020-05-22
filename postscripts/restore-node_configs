@@ -1,0 +1,48 @@
+#!/bin/bash
+
+###
+# Description: Restore node configs, previously backed up on xcat master
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+# DEFAULT SETTINGS
+BKUP_DIR="/install/files/compute/$NODE"
+
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+# DO WORK
+
+logr "ensure $MASTER:$INSTALLDIR is mounted"
+/xcatpost/mountinstall || croak 'mountinstall returned non-zero'
+logr "ensure $MASTER:$INSTALLDIR is mounted ... OK"
+
+find "$BKUP_DIR" -type f -name '*.tgz' \
+| while read ; do
+    logr "restoring '$REPLY'..."
+    tar xmPf $REPLY
+    logr "...restore successful"
+done
+
+logr "end of '$PRG'"
+
+exit 0
