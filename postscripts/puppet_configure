@@ -61,7 +61,7 @@ croak() {
 set_server() {
     logr "enter '$FUNCNAME'..."
     let "min_conf_date = $NOW - $MAX_CONF_AGE"
-    config_date=$(date -r /etc/puppetlabs/puppet/config +%s)
+    config_date=$(date -r /etc/puppetlabs/puppet/puppet.conf +%s)
     if [[ $config_date -lt $min_conf_date ]] ; then
         # Assume config is from rpm (it was not restored from a backup)
         # ie: this must be a new node, set server accordingly
