@@ -22,27 +22,6 @@ done
 DEBUG=$NO
 #DEBUG=$YES
 
-
-backup_node() {
-    [[ $DEBUG -eq $YES ]] && set -x
-    local _node="$1"
-    local _ts=${TS:-$(date +%s)}
-    local _bkup_dir=/root/backups/xcat-nodes
-    local _bkupfn="${_bkup_dir}/${_node}.${_ts}.bkup"
-    mkdir -p "$_bkup_dir"
-    lsdef "$_node" >"$_bkupfn"
-    ls -l "$_bkupfn"
-}
-
-
-purge_node() {
-    [[ $DEBUG -eq $YES ]] && set -x
-    local _node="$1"
-    [[ $(nodels "$_node" | wc -l) -eq 1 ]] || return 0
-    backup_node "$_node"
-    nodepurge "$_node"
-}
-
 groups_chooser() {
     [[ $DEBUG -eq $YES ]] && set -x
     local _done='>>DONE<<'
