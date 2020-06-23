@@ -5,7 +5,7 @@ DEBUG=1
 BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 DBDUMP=/opt/xcat/sbin/dumpxCATdb
-NUM_OLD_BKUPS_TO_KEEP=30
+NUM_OLD_BKUPS_TO_KEEP=200
 
 # Import libs
 imports=( logging backup pathmunge )
@@ -56,3 +56,6 @@ find $BACKUPPATH -type f \
 | sort \
 | tail -n +$NUM_OLD_BKUPS_TO_KEEP \
 | xargs -r rm -f
+
+# Remove empty dirs
+find $BACKUPDIR -type d -empty -exec rmdir {} \;
