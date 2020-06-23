@@ -7,12 +7,13 @@ BASE=$( dirname "$0" )
 PRG="$0"
 LIB=$BASE/libs
 TS=$( date +%s )
-DEFAULT_ENABLED_REPOS=( centosplus \
-              extras \
-              updates \
-              base \
-              epel \
-            )
+DEFAULT_ENABLED_REPOS=(
+    centosplus \
+    extras \
+    updates \
+    base \
+    epel \
+)
 
 # Import libs
 imports=( logging cron puppet csv )
@@ -27,7 +28,7 @@ done
 
 
 save_state() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     local _fn_state _name _value
     _fn_state="$BASE/state"
     _name=$1
@@ -41,7 +42,7 @@ save_state() {
 
 
 restore_state() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     fn_state="$BASE/state"
     [[ -f "$fn_state" ]] && {
         source "$fn_state"
@@ -51,7 +52,7 @@ restore_state() {
 
 
 initialize() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     restore_state
     let "ITERATION=$ITERATION + 1"
     save_state ITERATION
@@ -61,7 +62,7 @@ initialize() {
 
 failed_at() {
     # Set FAILED_AT variable, Update and save state for FAILURE_HISTORY
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     FAILED_AT="$1"
     FAILURE_HISTORY="$FAILURE_HISTORY $FAILED_AT"
     save_state FAILURE_HISTORY
@@ -72,7 +73,7 @@ fail_after_too_many_attempts() {
     # TODO - this could be improved by checking how many times the current
     #        value for FAILED_AT exists in FAILURE_HISTORY
     #        ... instead of comparison to reboot count (ie: ITERATION)
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     _msg_parts=( "$FAILURE_HISTORY" "$FAILED_AT" )
     [[ $ITERATION -gt $MAX_RETRIES ]] && {
         croak "Failing after '$ITERATION' attempts: Failure History: '$FAILURE_HISTORY'"
@@ -85,10 +86,9 @@ stop_puppet() {
     #     NOTE: Don't overwrite variables if already set ...
     #           on a second run, they will have been saved from first run
     # Second: ensure puppet is stopped
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     is_safe_to_proceed || return 1
     [[ -z "$PUP_ENSURE_STATE" ]] && {
-        #PUP_ENSURE_STATE=$( get_puppet_ensure_state )
         PUP_ENSURE_STATE=$( get_puppet_ensure_state )
         save_state PUP_ENSURE_STATE
     }
@@ -108,7 +108,7 @@ stop_puppet() {
 
 
 restore_puppet() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     is_safe_to_proceed || return 1
     set_puppet_enable_state $PUP_ENABLE_STATE || {
         failed_at "set_puppet_enable_state"
@@ -125,26 +125,26 @@ restore_puppet() {
 
 
 is_safe_to_proceed() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     [[ -z "$FAILED_AT" ]]
 }
 
 
 try_again_after_reboot() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     REBOOT_REQUIRED=$YES
     mk_cron "$PRG" '@reboot'
 }
 
 
 disable_gpfs() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     systemctl | grep -q gpfs && systemctl disable gpfs
 }
 
 
 enable_gpfs() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     is_safe_to_proceed || return 1
     # Attempt only if gpfs is installed
     systemctl | grep -q gpfs && systemctl enable gpfs
@@ -152,7 +152,7 @@ enable_gpfs() {
 
 
 stop_gpfs() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     is_safe_to_proceed || return 1
     local _fn_unmount_script
     _fn_unmount_script="$BASE/gpfs_unmount.sh"
@@ -183,13 +183,12 @@ kernel_was_upgraded() {
     log "Current kernel: $_cur_kernel"
     [[ -z $_yum_kernel ]] && _yum_kernel=$_cur_kernel #set default if empty
     [[ -z $_rpm_kernel ]] && _rpm_kernel=$_cur_kernel #set default if empty
-    rc=1
     [[ "$_cur_kernel" != "$_yum_kernel"  ||  "$_cur_kernel" != "$_rpm_kernel" ]]
 }
 
 
 apply_updates() {
-    [[ $DEBUG -eq 1 ]] && set -x
+    [[ $DEBUG -eq $YES ]] && set -x
     is_safe_to_proceed || return 1
     local _tmpfn _rc
     
@@ -215,6 +214,7 @@ apply_updates() {
 
 
 reboot() {
+    [[ $REBOOT_ALLOWED -eq $YES ]] || return 0
     if [[ $FORCE_REBOOT -eq $YES ]] || [[ $REBOOT_REQUIRED -eq $YES ]] ; then
         fail_after_too_many_attempts 
         log 'REBOOTING SERVER...'
@@ -236,15 +236,17 @@ USAGE:
     $PRG [OPTIONS]
 
 OPTIONS:
+  -d    Show debug output
   -h    print help message and exit
   -v    show what is happening
-  -d    Show debug output
   --disable_pkgs  Comma separated list of packages to ignore
   --disable_repos Comma separated list of repos to disable during yum update
   --enable_repos  Comma separated list of repos to enable during yum update
                   Note: this is added to the default list of repos
-  --force_reboot  Force reboot after yum update
-                  default = reboot only if kernel was upgraded
+  --force_reboot  Reboot after yum update, even if kernel was not updated.
+                  Default = reboot only if kernel was upgraded
+  --no_reboot     Do not reboot for any reason. This option trumps "force_reboot".
+                  Default = reboot is allowed
   --no_defaults   Unset the default list of enabled repos
 
 DEFAULTS:
@@ -265,30 +267,34 @@ FAILED_AT=
 FORCE_REBOOT=$NO
 ITERATION=0
 MAX_RETRIES=2
+REBOOT_ALLOWED=$YES
 REBOOT_REQUIRED=$NO
 VERBOSE=$NO
 
 # Process cmdline options
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   case $1 in
+    -d) DEBUG=$YES;;
     -h) usage
         exit 0;;
     -v) VERBOSE=1;;
-    -d) DEBUG=1;;
     --disable_pkgs)
         shift
-        DISABLED_PKGS=( split_csv "$1" )
+        DISABLED_PKGS=( $( split_csv "$1" ) )
         ;;
     --disable_repos)
         shift
-        DISABLED_REPOS=( split_csv "$1" )
+        DISABLED_REPOS=( $( split_csv "$1" ) )
         ;;
     --enable_repos)
         shift
-        ENABLED_REPOS=( split_csv "$1" )
+        ENABLED_REPOS=( $( split_csv "$1" ) )
         ;;
     --force_reboot)
         FORCE_REBOOT=$YES
+        ;;
+    --no_reboot)
+        REBOOT_ALLOWED=$NO
         ;;
     --no_defaults)
         ALLOW_DEFAULTS=$NO
@@ -303,6 +309,19 @@ done
 [[ $ALLOW_DEFAULTS -eq $YES ]] && {
     ENABLED_REPOS+=( "${DEFAULT_ENABLED_REPOS[@]}" )
 }
+
+echo ALLOW_DEFAULTS="$ALLOW_DEFAULTS"
+echo DEBUG="$DEBUG"
+echo DISABLED_PKGS="${DISABLED_PKGS[@]}"
+echo DISABLED_REPOS="${DISABLED_REPOS[@]}"
+echo ENABLED_REPOS="${ENABLED_REPOS[@]}"
+echo FAILED_AT= "$FAILED_AT"
+echo FORCE_REBOOT="$FORCE_REBOOT"
+echo ITERATION="$ITERATION"
+echo MAX_RETRIES="$MAX_RETRIES"
+echo REBOOT_ALLOWED="$REBOOT_ALLOWED"
+echo REBOOT_REQUIRED="$REBOOT_REQUIRED"
+echo VERBOSE="$VERBOSE"
 
 initialize
 

@@ -56,13 +56,13 @@ $PRG
     Copy os-upgrade scripts to the client node and (optionally) run them.
 
 USAGE:
-    $PRG [OPTIONS]
+    $PRG [OPTIONS] {NODERANGE} [NODERANGE ...] [CLIENT OPTIONS]
 
 OPTIONS:
-    -h --help
-        print help message and exit
     -d --debug
         Enable debug output
+    -h --help
+        print help message and exit
     -n --norun
         Copy scripts to remote node but don't run anything
         (Default = copy scripts and run them)
@@ -74,6 +74,12 @@ OPTIONS:
     -q --quiet
         Disable all verbose and debug output
         (Default = enable verbose output)
+
+NODERANGE:
+    Any valid xCAT noderange (passed to nodels).
+
+CLIENT OPTIONS:
+    Any valid cmdline options for client_scripts/update_os.sh
 
 ENDHERE
 }
@@ -118,8 +124,35 @@ done
 
 [[ $DEBUG -eq $YES ]] && set -x
 
+# Split remaining args into nodelist items and client script options
+declare -a params
+declare -a client_opts
+for item in "$@"; do
+    if [[ "$item" =~ ^-.* ]] ; then
+        client_opts+=( "$@" )
+        break
+    else
+        params+=( "$item" )
+        shift
+    fi
+done
+
 # Build nodelist from cmdline args
-nodelist=( $( build_nodelist "$@" ) )
+nodelist=( $( build_nodelist "${params[@]}" ) )
+
+#echo DEBUG=$DEBUG
+#echo PAUSE=$PAUSE
+#echo STARTUPDATES=$STARTUPDATES
+#echo VERBOSE=$VERBOSE
+#
+#for i in "${nodelist[@]}"; do
+#    echo NODE: "$i"
+#done
+#
+#for i in "${client_opts[@]}"; do
+#        echo client opt: "$i"
+#done
+#exit 1
 
 if [[ $STARTUPDATES -eq $YES ]] ; then
     tmpdir=$( mktemp -d )
@@ -133,7 +166,7 @@ for node in "${nodelist[@]}"; do
         log "Starting update on $node"
         logfn="$tmpdir/$node"
         (
-            $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh"
+            $XCATBIN/xdsh $node -t 900 "$TGT_DIR/update_os.sh" "${client_opts[@]}"
         ) &>"$logfn" &
     fi
     [[ $PAUSE -gt 0 ]] && pause $PAUSE
