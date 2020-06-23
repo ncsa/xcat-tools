@@ -3,7 +3,9 @@
 # When a dir is a mount point, it has a different device number than its parent
 MOUNTPOINT='/backup'
 MOUNTPOINT_ALTERNATIVE='/var/backups/xcat'
-if [[ $( stat -fc%t:%T "$MOUNTPOINT" 2>/dev/null ) != $( stat -fc%t:%T "$MOUNTPOINT/.." ) ]] ; then
+mp_device=$( stat -fc%t:%T "$MOUNTPOINT" 2>/dev/null )
+mp_parent_device=$( stat -fc%t:%T "$MOUNTPOINT/.." 2>/dev/null )
+if [[ "$mp_device" != "$mp_parent_device" ]] ; then
     BACKUPDIR="$MOUNTPOINT"
 else
     BACKUPDIR="$MOUNTPOINT_ALTERNATIVE"
