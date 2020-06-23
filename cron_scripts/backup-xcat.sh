@@ -54,5 +54,5 @@ find "$SNAPDIR" -delete
 # Clean old backups
 find $BACKUPPATH -type f \
 | sort \
-| tail -n +$NUM_OLD_BKUPS_TO_KEEP \ 
+| tail -n +$NUM_OLD_BKUPS_TO_KEEP \
 | xargs -r rm -f
