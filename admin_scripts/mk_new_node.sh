@@ -27,6 +27,8 @@ NODE=ctlr2
 
 # If node is VMware, skip these
 #BMC_IP=192.168.180.20
+# Name of the ipmi network in the xCAT "network" table
+#BMC_NETNAME=srvc
 # bmc user/pass can be picked up from an xCAT group
 #BMC_USER=
 #BMC_PASS=
@@ -103,13 +105,14 @@ ${actions[@]} <<ENDHERE
 $NODE:
     objtype=node
     arch=x86_64
+    netboot=xnba
     groups=$GROOPS
     ip=$MGMT_IP
     mac=$MGMT_MAC
     ${MGMT_TYPE:+mgt=$MGMT_TYPE}
     ${BMC_IP:+nicips.bmc=$BMC_IP}
     ${BMC_IP:+nictypes.bmc=bmc}
-    ${BMC_IP:+nicnetworks.bmc=ipmi_net}
+    ${BMC_IP:+nicnetworks.bmc=$BMC_NETNAME}
     ${BMC_PASS:+bmcpassword=$BMC_PASS}
     ${BMC_USER:+bmcusername=$BMC_USER}
     ${PUBLIC_IP:+nicips.$PUBLIC_INTF=$PUBLIC_IP}
