@@ -22,7 +22,6 @@ done
 
 XCATBIN=/opt/xcat/bin
 XDSH=$XCATBIN/xdsh
-NODELS=$XCATBIN/nodels
 PRG=$(basename $0)
 BKUP_BASE=/install/files/compute
 NOW=$(date +%s)
@@ -74,7 +73,7 @@ client_has_path() {
     # Check if client has ssl certs to be backed up
     local node="$1"
     local path="$2"
-    xdsh "$node" -z "stat $path" &>/dev/null
+    "$XDSH" "$node" -z "stat $path" &>/dev/null
 }
 
 
@@ -144,7 +143,7 @@ let "MIN_BKUP_DATE = $NOW - $REFRESH_SECS"
 [[ $DEBUG -eq $YES ]] && set -x
 
 if [[ $# -lt 1 ]] ; then
-  nodelist=( $( $NODELS all) )
+  nodelist=( $( build_nodelist all) )
 else
   nodelist=( $( build_nodelist "$@" ) )
 fi
