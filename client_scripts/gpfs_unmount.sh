@@ -31,7 +31,7 @@ is_gpfs_installed() {
 
 get_gpfs_state() {
     [[ $DEBUG -eq 1 ]] && set -x
-    $GPFSBIN/mmgetstate | grep $HOSTNAME | awk '{print $NF}'
+    $GPFSBIN/mmgetstate | grep `hostname -s` | awk '{print $NF}'
 }
 
 
