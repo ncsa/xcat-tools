@@ -147,13 +147,14 @@ install_scripts() {
       sed -i -e "s?$_pattern?$INSTALL_DIR?" "$REPLY"
     done
 
-    # (3) install from _tmpdir to _tgtdir (ignore tmpl files)
-    find "$_tmpdir" -type f ! -iname '*.tmpl' -print \
+    # (3) install from _tmpdir to _tgtdir
+    find "$_tmpdir" -type f -print \
     | while read; do 
       _dest=$( echo "$REPLY" | sed -e "s?$_tmpdir?$_tgtdir?" )
       _parent=$( dirname "$_dest" )
       mkdir -p "$_parent"
-      install -vbC --suffix="$TS" -T "$REPLY" "$_dest"
+      install_allowed "$_dest" \
+      && install -vbC --suffix="$TS" -T "$REPLY" "$_dest"
     done
     find "$_tmpdir" -delete
   done
@@ -205,6 +206,25 @@ populate_script_install_map() {
               [libs]="$INSTALL_DIR/libs" \
        [postscripts]="/install/postscripts/custom" \
   )
+}
+
+
+install_allowed() {
+  # Determine if install / update is allowed
+  [[ $DEBUG -eq $YES ]] && set -x
+  # List of files that should never be updated
+  local _ignore_update_files=(
+    backup-node_configs.sources \
+  )
+  local _tgt_file="$1"
+  local _tgt_fn=$( basename "$1" )
+  local _rv=0
+  [[ -z "$_tgt_file" ]] && croak "got empty target filename"
+  [[ -z "$_tgt_fn" ]] && croak "got empty basenae for filename"
+  if [[ -e "_tgt_file" ]] ; then
+    [[ ${_ignore_update_files["$_tgt_fn"]}+abc ]] && _rv=1
+  fi
+  return $_rv
 }
 
 
