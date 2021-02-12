@@ -1,0 +1,101 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              Register node with redhat
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+#
+# DEFAULT SETTINGS
+#
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+  Register node with redhat to be able to pull updates.
+
+Usage:
+  $PRG [OPTIONS]
+
+Options:
+  -k activation key
+  -o organization id
+
+Environment Variables:
+  RHEL_KEY
+  RHEL_ORG
+
+Cmdline options override environment variables.
+Environment variables can be set in the xCAT site table.
+
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h)
+      usage
+      ;;
+    -k)
+      _rhel_key="$2"
+      shift
+      ;;
+    -o)
+      _rhel_org="$2"
+      shift
+      ;;
+    --)
+      ENDWHILE=1
+      ;;
+    -*)
+      echo "Invalid option '$1'"
+      exit 1
+      ;;
+     *)
+      ENDWHILE=1
+      break
+      ;;
+  esac
+  shift
+done
+
+[[ -z "$_rhel_key" ]] && _rhel_key="$RHEL_KEY"
+[[ -z "$_rhel_key" ]] && croak "missing RHEL_KEY"
+
+[[ -z "$_rhel_org" ]] && _rhel_org="$RHEL_ORG"
+[[ -z "$_rhel_org" ]] && croak "missing RHEL_ORG"
+
+#
+# DO WORK
+#
+subscription-manager register --org="$_rhel_org" --activationkey="$_rhel_key"
