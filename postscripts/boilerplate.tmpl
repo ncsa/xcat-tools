@@ -28,6 +28,13 @@ function logr {
 }
 
 
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
 usage() {
   cat << ENDHERE
 
