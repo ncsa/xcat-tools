@@ -8,19 +8,27 @@ LIB=$BASE/libs
 PRG=$( basename $0 )
 
 # Import libs
-imports=( logging build_nodelist )
+imports=( logging build_nodelist node )
 for f in "${imports[@]}"; do
-    srcfn="${LIB}/${f}.sh"
-    [[ -f "$srcfn" ]] || {
-        echo "Failed to find lib file '$srcfn'"
-        exit 1
-    }
-    source "$srcfn"
+  srcfn="${LIB}/${f}.sh"
+  [[ -f "$srcfn" ]] || {
+    echo "Failed to find lib file '$srcfn'"
+    exit 1
+  }
+  source "$srcfn"
 done
 
 
 get_imagename() {
-  lsdef $1 | awk -F= '/provmethod/ {print $NF}'
+  get_node_attr "$1" provmethod
+}
+
+
+is_virtual() {
+  local _rv=$NO
+  get_node_attr "$1" mgt | grep 'esx\|kvm' && _rv=$YES
+  get_node_attr "$1" groups | grep 'vmware' && _rv=$YES
+  return $_rv
 }
 
 
@@ -104,8 +112,12 @@ for n in "${nodelist[@]}" ; do
     $action nodeset $n "${nodeset_actions[@]}" \
     || croak "nodeset returned nonzero ... check errors above for details"
   fi
-  $action rsetboot $n net \
-  || croak "rsetboot returned nonzero ... check errors above for details"
-  $action rpower $n boot
-  $action sleep $PAUSE >/dev/null
+  if [[ is_virtual ]] ; then
+    $action xdsh "$1" reboot
+  else
+    $action rsetboot $n net \
+    || croak "rsetboot returned nonzero ... check errors above for details"
+    $action rpower $n boot
+    $action sleep $PAUSE >/dev/null
+  fi
 done
