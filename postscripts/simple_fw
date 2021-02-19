@@ -1,0 +1,150 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              Setup a sane firewall allowing only ssh from MN
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+DEBUG=1
+SSH_ALLOWED_SOURCES=( "$MASTER" )
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+    Set a firewall that blocks all incoming connections,
+    except ssh from MN
+Usage:
+    $PRG
+ENDHERE
+}
+
+
+remove_firewalld() {
+  # https://linuxize.com/post/how-to-stop-and-disable-firewalld-on-centos-7/
+  # https://access.redhat.com/solutions/3897641
+  [[ $DEBUG -eq 1 ]] && set -x
+  systemctl stop nftables firewalld
+  systemctl disable nftables firewalld
+  systemctl mask --now nftables firewalld
+}
+
+
+ensure_iptables() {
+  # https://linuxize.com/post/how-to-install-iptables-on-centos-7/
+  [[ $DEBUG -eq 1 ]] && set -x
+  yum -y install iptables-services
+  systemctl start iptables
+  systemctl start ip6tables
+  systemctl enable iptables
+  systemctl enable iptables
+}
+
+
+iptables_ssh() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  for src in "${SSH_ALLOWED_SOURCES[@]}"; do
+    iptables -A INPUT \
+    -s "${src}" \
+    -p tcp \
+    -m multiport --dports 22 \
+    -j ACCEPT
+  done
+}
+
+
+iptables_clear() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  for cmd in iptables ip6tables; do
+    for table in 'nat' 'filter'; do
+      "$cmd" -t "$table" -Z
+      "$cmd" -t "$table" -F
+      "$cmd" -t "$table" -X
+    done
+  done
+}
+
+
+iptables_policy() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  for cmd in iptables ip6tables; do
+    for chain in INPUT FORWARD; do
+      "$cmd" -P "$chain" DROP
+    done
+  done
+}
+
+
+iptables_begin() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  iptables -A INPUT -i lo -j ACCEPT
+  ip6tables -A INPUT -i lo -j ACCEPT
+  iptables -A INPUT -m state --state RELATED,ESTABLISHED -j ACCEPT
+  iptables -A INPUT -p icmp -j ACCEPT
+  # ipv6-icmp is needed to correctly handle ICMP in IPv6
+  ip6tables -A INPUT -p ipv6-icmp -j ACCEPT
+}
+
+
+iptables_end() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  iptables -A INPUT -j DROP
+  ip6tables -A INPUT -j DROP
+}
+
+
+bkup_existing_iptables() {
+  [[ $DEBUG -eq 1 ]] && set -x
+  iptables-save >iptables.bkup.$(date +%s)
+}
+
+
+configure_iptables() {
+  iptables_clear
+  iptables_policy
+  iptables_begin
+  iptables_ssh
+  iptables_end
+}
+
+
+#
+# DO WORK
+#
+[[ $DEBUG -eq 1 ]] && set -x
+
+remove_firewalld
+
+ensure_iptables
+
+bkup_existing_iptables
+
+configure_iptables
