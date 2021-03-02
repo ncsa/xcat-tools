@@ -26,8 +26,8 @@ get_imagename() {
 
 is_virtual() {
   local _rv=$NO
-  get_node_attr "$1" mgt | grep 'esx\|kvm' && _rv=$YES
-  get_node_attr "$1" groups | grep 'vmware' && _rv=$YES
+  get_node_attr "$1" mgt | grep -q 'esx\|kvm' && _rv=$YES
+  get_node_attr "$1" groups | grep -q 'vmware' && _rv=$YES
   return $_rv
 }
 
@@ -59,32 +59,43 @@ ADVANCED OPTIONS:
 ENDHERE
 }
 
-ENDWHILE=0
-VERBOSE=0
-DRYRUN=0
-PAUSE=5
-SKIPOSIMAGE=0
-SHELL=0
+ENDWHILE=$NO
+BOOT_TO_SHELL=$NO
+DRYRUN=$NO
+REBOOT_ALLOWED=$YES
 OSIMAGE=
-while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+PAUSE=5
+SKIPOSIMAGE=$NO
+VERBOSE=$NO
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq $NO ]] ; do
   case $1 in
     -h) usage
         exit 0;;
-    -v) VERBOSE=1;;
-    -n) DRYRUN=1;;
-    -p) PAUSE=$2;
+    -v) VERBOSE=$YES;;
+    -n) DRYRUN=$YES;;
+    --noreboot)
+        REBOOT_ALLOWED=$NO
+        ;;
+    --osimage)
+        OSIMAGE=$2
+        shift
+        ;;
+    -p) PAUSE=$2
         shift;;
-    --osimage) OSIMAGE=$2;
-        shift;;
-    --shell) SHELL=1; SKIPOSIMAGE=1;;
-    --skip-osimage) SKIPOSIMAGE=1;;
-    --) ENDWHILE=1;;
-     *) ENDWHILE=1; break;;
+    --shell)
+        BOOT_TO_SHELL=$YES
+        SKIPOSIMAGE=$YES
+        ;;
+    --skip-osimage)
+        SKIPOSIMAGE=$YES
+        ;;
+    --) ENDWHILE=$YES;;
+     *) ENDWHILE=$YES; break;;
   esac
   shift
 done
 
-[[ $VERBOSE -eq 1 ]] && set -x
+[[ $VERBOSE -eq $YES ]] && set -x
 
 # Build nodelist from cmdline args
 nodelist=( $( build_nodelist "$@" ) )
@@ -92,13 +103,13 @@ nodelist=( $( build_nodelist "$@" ) )
 
 # Do work for each node
 action=
-[[ $DRYRUN -ne 0 ]] && action="echo"
+[[ $DRYRUN -eq $YES ]] && action="echo"
 for n in "${nodelist[@]}" ; do
   nodeset_actions=()
-  if [[ $SHELL -eq 1 ]] ; then
+  if [[ $BOOT_TO_SHELL -eq $YES ]] ; then
     nodeset_actions+=( shell )
   fi
-  if [[ $SKIPOSIMAGE -lt 1 ]] ; then
+  if [[ $SKIPOSIMAGE -eq $NO ]] ; then
     unset imagename
     if [[ -n "$OSIMAGE" ]] ; then
       imagename="$OSIMAGE"
@@ -112,12 +123,12 @@ for n in "${nodelist[@]}" ; do
     $action nodeset $n "${nodeset_actions[@]}" \
     || croak "nodeset returned nonzero ... check errors above for details"
   fi
-  if [[ is_virtual ]] ; then
-    $action xdsh "$1" reboot
+  if is_virtual "$n" ; then
+    [[ $REBOOT_ALLOWED -eq $YES ]] && $action xdsh "$n" reboot
   else
     $action rsetboot $n net \
     || croak "rsetboot returned nonzero ... check errors above for details"
-    $action rpower $n boot
+    [[ $REBOOT_ALLOWED -eq $YES ]] && $action rpower $n boot
     $action sleep $PAUSE >/dev/null
   fi
 done
