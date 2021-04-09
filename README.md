@@ -5,7 +5,7 @@ Useful tools for xCAT
 
 ### Quick Install (into $HOME/xcat-tools)
 ```bash
-export QS_REPO=https://github.com/ncsa/xcat-tools
+export QS_GIT_REPO=https://github.com/ncsa/xcat-tools
 curl https://raw.githubusercontent.com/andylytical/quickstart/master/quickstart.sh | bash
 ```
 
