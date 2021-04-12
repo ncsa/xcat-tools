@@ -34,16 +34,35 @@ warn() {
 }
 
 ask_continue() {
-  local msg="Continue, Skip, or Exit?"
-  [[ -n "$1" ]] && msg="$1"
-  echo "$msg" 1>&2
+  local _rv=$NO
+  local _msg="Continue, Skip, or Exit?"
+  [[ -n "$1" ]] && _msg="$1"
+  echo "$_msg" 1>&2
   select answer in "Continue" "Skip" "Exit"; do
     case $answer in
-      Continue) return 0;;
-      Skip ) return 1;;
+      Continue) _rv=$YES;;
+      Skip ) _rv=$NO;;
       Exit ) croak "User Exit";;
     esac
+    break
   done
+  return $_rv
+}
+
+
+ask_yes_no() {
+  local _rv=$NO
+  local _msg="Is this ok?"
+  [[ -n "$1" ]] && _msg="$1"
+  echo "$_msg"
+  select yn in "Yes" "No"; do
+    case $yn in
+      Yes) _rv=$YES;;
+      No ) _rv=$NO;;
+    esac
+    break
+  done
+  return $_rv
 }
 
 
@@ -148,7 +167,9 @@ configure_networks() {
     chdef -t network mgmt_net dynamicrange="$XCAT_MN_DYN_RANGE"
     lsdef -t network -l
     # DNS
-    chdef -t site externaldns=1
+    if ask_yes_no "Use external DNS?" ; then
+      chdef -t site externaldns=1
+    fi
     makedns -n
     # DHCP
     chdef -t site dhcpinterfaces="$XCAT_MN_DHCP_INTF"
