@@ -12,55 +12,57 @@ PRG=$( basename $0 )
 # Import libs
 imports=( logging )
 for f in "${imports[@]}"; do
-    _srcfn="${LIB}/${f}.sh"
-    [[ -f "$_srcfn" ]] || {
-        echo "Failed to find lib file '$_srcfn'"
-        exit 1
-    }
-    source "$_srcfn"
+  _srcfn="${LIB}/${f}.sh"
+  [[ -f "$_srcfn" ]] || {
+    echo "Failed to find lib file '$_srcfn'"
+    exit 1
+  }
+  source "$_srcfn"
 done
 
 
 check_required_parameters() {
-    [[ $DEBUG -eq $YES ]] && set -x
-    local _req_params=( MASTERIP DOMAIN )
-    for v in "${_req_params[@]}"; do
-        [[ -z "${!v}" ]] && croak "Missing required parameter: '$v'"
-    done
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _req_params=( MASTERIP DOMAIN )
+  for v in "${_req_params[@]}"; do
+    [[ -z "${!v}" ]] && croak "Missing required parameter: '$v'"
+  done
 }
 
 get_pup_server() {
-    [[ $DEBUG -eq $YES ]] && set -x
-    local _pupcmd=$(which puppet 2>/dev/null )
-    local _pupserver=puppet
-    [[ -n "$_pupcmd" ]] && {
-        _pupserver=$( $_pupcmd config print server --section=agent )
-    }
-    echo $_pupserver
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _pupcmd=$(which puppet 2>/dev/null )
+  local _pupserver=puppet
+  [[ -n "$_pupcmd" ]] && {
+    _pupserver=$( $_pupcmd config print server --section=agent )
+  }
+  echo $_pupserver
 }
 
 
 mk_stanza() {
-    [[ $DEBUG -eq $YES ]] && set -x
-    local _forwarders=$( awk '/nameserver/ {
-                          ns=ns "," $NF
-                      }
-                      END {
-                        sub(/^,/,"",ns)
-                        print ns
-                      }' \
-                 /etc/resolv.conf )
-    local _puppetmaster=$( get_pup_server )
-    cat <<ENDSTANZA
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _forwarders=$( awk '
+/nameserver/ {
+  ns=ns "," $NF
+}
+END {
+  sub(/^,/,"",ns)
+  print ns
+}' \
+    /etc/resolv.conf )
+  local _puppetmaster=$( get_pup_server )
+  cat <<ENDSTANZA
 clustersite:
-    objtype=site
-    auditskipcmds=ALL
-    domain=$DOMAIN
-    forwarders=$_forwarders
-    master=$MASTERIP
-    nameservers=$_forwarders
-    precreatemypostscripts=1
-    puppetmaster=$_puppetmaster
+  objtype=site
+  auditskipcmds=ALL
+  domain=$DOMAIN
+  extntpservers=ntp.ncsa.illinois.edu,ntp.illinois.edu
+  forwarders=$_forwarders
+  master=$MASTERIP
+  nameservers=$_forwarders
+  precreatemypostscripts=1
+  puppetmaster=$_puppetmaster
 ENDSTANZA
 }
 
@@ -69,10 +71,10 @@ usage() {
   cat <<ENDHERE
 
 $PRG
-    Populate the site table for a new xcat cluster.
+  Populate the site table for a new xcat cluster.
 
 Usage:
-    $PRG [OPTIONS] --masterip <IPADDR> --domain <LOCAL.XCAT.DOMAIN>
+  $PRG [OPTIONS] --masterip <IPADDR> --domain <LOCAL.XCAT.DOMAIN>
 
 PARAMETERS:
   --masterip   ip of xcat master node on the management network
@@ -119,7 +121,7 @@ check_required_parameters
 
 # Populate site table
 if [[ $DRYRUN -eq $YES ]] ; then
-    mk_stanza
+  mk_stanza
 else
-    mk_stanza | chdef -z
+  mk_stanza | chdef -z
 fi

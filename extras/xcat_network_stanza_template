@@ -1,0 +1,13 @@
+network_name:
+    objtype=network
+    #OPTIONAL dhcpserver=172.28.18.18
+    dynamicrange=172.28.18.250-172.28.18.252
+    gateway=172.28.18.1
+    mask=255.255.255.0
+    mgtifname=ens192
+    #FOR A REMOTE SUBNET mgtifname=!remote!
+    # note: remote subnet requires DHCP relay configured on the switch
+    #mtu=1500 #OPTIONAL (must be the same for all networks using the same interface)
+    net=172.28.18.0
+    #OPTIONAL tftpserver=172.28.18.18
+
