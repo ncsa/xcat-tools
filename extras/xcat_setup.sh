@@ -167,6 +167,11 @@ get_mn_ip() {
 }
 
 
+check_xcat() {
+  [[ -d /opt/xcat ]] || croak "xCAT not installed"
+}
+
+
 check_envs() {
   log "About to do: ${FUNCNAME[0]}"
   local _rv=$OK
@@ -188,22 +193,6 @@ check_envs() {
   done
   set +x
   return $_rv
-}
-
-
-install_xcat() {
-  log "About to do: ${FUNCNAME[0]}"
-  ask_continue || return 1
-  [[ "$DEBUG" == "$YES" ]] && set -x
-  yum -y install git yum-utils
-  curl -o /root/go-xcat \
-    https://raw.githubusercontent.com/xcat2/xcat-core/master/xCAT-server/share/xcat/tools/go-xcat
-  chmod +x /root/go-xcat
-  /root/go-xcat -y install
-  source /etc/profile.d/xcat.sh
-  # UPDATE
-  /root/go-xcat -y update
-  set +x
 }
 
 
@@ -347,9 +336,9 @@ check_setup() {
 
 #DEBUG=$YES
 
-check_envs || croak "Missing essential data. Fix warnings above and restart."
+check_xcat
 
-install_xcat
+check_envs || croak "Missing essential data. Fix warnings above and restart."
 
 #install_tools
 
