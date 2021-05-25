@@ -4,7 +4,7 @@ trap "exit 1" TERM
 export XCAT_TOOLS_TOP_PID=$BASHPID
 
 # Define global variables.
-BASE=/root/xcat-tools
+BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 PROGRAM=$( basename $0 )
 NODELIST=""
