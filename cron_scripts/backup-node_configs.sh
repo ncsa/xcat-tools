@@ -3,7 +3,7 @@
 ###
 # Import libs
 ###
-BASE=/root/xcat-tools
+BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 imports=( logging build_nodelist )
 for f in "${imports[@]}"; do
@@ -27,11 +27,8 @@ BKUP_BASE=/install/files/compute
 NOW=$(date +%s)
 REFRESH_DAYS=7
 
-BACKUP_SOURCES=( \
-  /etc/puppetlabs/puppet/ssl \
-  /etc/puppetlabs/puppet/puppet.conf \
-  /etc/krb5.keytab \
-)
+BACKUP_SOURCES_FN=___INSTALL_DIR___/cron_scripts/backup-node_configs.sources
+BACKUP_SOURCES=( $( cat "${BACKUP_SOURCES_FN}" ) )
 
 
 ###
