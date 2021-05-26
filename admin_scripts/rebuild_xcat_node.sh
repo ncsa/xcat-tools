@@ -36,7 +36,7 @@ is_virtual() {
 is_node_booted() {
   local _rv=$NO
   local _status=$( get_node_attr "$1" status )
-  case "$status" in
+  case "$_status" in
     boot* | failed) _rv=$YES;;
     *) _rv=$NO;;
   esac
