@@ -17,7 +17,7 @@ alias rebuild=___INSTALL_DIR___/admin_scripts/rebuild_xcat_node.sh
 ## lldef - long listing of all objects of the given type
 ## like "ls -l" for lsdef
 lldef() {
-  lsdef -t "$1" | awk '{printf("%s,", $1)}' | xargs lsdef -t "$1" -l -o
+  lsdef -t "$1" | grep "${2:-.}" | awk '{printf("%s,", $1)}' | xargs lsdef -t "$1" -l -o
 }
 
 # add xcat-tools to path
