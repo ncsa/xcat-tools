@@ -6,6 +6,7 @@ export XCAT_TOOLS_TOP_PID=$BASHPID
 BASE=___INSTALL_DIR___
 LIB=$BASE/libs
 PRG=$( basename $0 )
+export DSH_TIMEOUT=2
 
 # Import libs
 imports=( logging build_nodelist node )
@@ -28,6 +29,17 @@ is_virtual() {
   local _rv=$NO
   get_node_attr "$1" mgt | grep -q 'esx\|kvm' && _rv=$YES
   get_node_attr "$1" groups | grep -q 'vmware' && _rv=$YES
+  return $_rv
+}
+
+
+is_node_booted() {
+  local _rv=$NO
+  local _status=$( get_node_attr "$1" status )
+  case "$status" in
+    boot* | failed) _rv=$YES;;
+    *) _rv=$NO;;
+  esac
   return $_rv
 }
 
@@ -124,7 +136,9 @@ for n in "${nodelist[@]}" ; do
     || croak "nodeset returned nonzero ... check errors above for details"
   fi
   if is_virtual "$n" ; then
-    [[ $REBOOT_ALLOWED -eq $YES ]] && $action xdsh "$n" reboot
+    [[ $REBOOT_ALLOWED -eq $YES ]] \
+      && is_node_booted "$n" \
+      && $action xdsh "$n" reboot
   else
     $action rsetboot $n net \
     || croak "rsetboot returned nonzero ... check errors above for details"
