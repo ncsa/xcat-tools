@@ -44,7 +44,7 @@ mk_stanza() {
   [[ $DEBUG -eq $YES ]] && set -x
   local _forwarders=$( awk '
 /nameserver/ {
-  ns=ns "," $NF
+  ns=ns "," $2
 }
 END {
   sub(/^,/,"",ns)
