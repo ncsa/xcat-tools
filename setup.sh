@@ -6,10 +6,30 @@ NO=1
 DEBUG=$YES
 VERBOSE=$YES
 
-
 croak() {
   echo "FATAL ERROR: $*" 1>&2
   exit 99
+}
+
+
+set_proxy() {
+  PROXY=
+  local _proxy="$https_proxy"
+  # try environment https
+  [[ -z "$_proxy" ]] && \
+    _proxy="$http_proxy"
+  # try environment http
+  [[ -z "$_proxy" ]] && \
+    _proxy="$https_proxy"
+  # try git
+  [[ -z "$_proxy" ]] && which git &>/dev/null && \
+    _proxy="$( git config --global --get http.proxy )"
+  # try curlrc
+  [[ -z "$_proxy" ]] && [[ -r ~/.curlrc ]] && \
+    _proxy="$( awk '/^proxy/{print $NF}' ~/.curlrc )"
+  # If found, export environment var
+  # [[ -n "$_proxy" ]] && export https_proxy="$_proxy"
+  [[ -n "$_proxy" ]] && PROXY="$_proxy"
 }
 
 
@@ -85,7 +105,7 @@ set_install_dir() {
 install_python() {
   [[ $DEBUG -eq $YES ]] && set -x
 	YUMPKGLIST=( \
-    python36
+    python3
 	)
 	yum -y install "${YUMPKGLIST[@]}"
   PYTHON=$(which python3)
@@ -102,7 +122,6 @@ ensure_python() {
   [[ -z "$PYTHON" ]] && croak "Unable to find Python3. Try setting 'PY3_PATH' env var."
   "$PYTHON" "$BASE/require_py_v3.py" || croak "Python version too low"
   "$PYTHON" -m ensurepip
-#    "$PYTHON" -m pip install -U pip
 }
 
 
@@ -112,8 +131,9 @@ setup_python_venv() {
   [[ -d "$venvdir" ]] || {
     "$PYTHON" -m venv "$venvdir"
     PIP="$venvdir/bin/pip"
-    "$PIP" install --upgrade pip
-    "$PIP" install -r "$BASE/requirements.txt"
+    PIP_PROXY="${PROXY:+--proxy $PROXY}"
+    "$PIP" $PIP_PROXY install --upgrade pip
+    "$PIP" $PIP_PROXY install -r "$BASE/requirements.txt"
   }
   V_PYTHON="$venvdir/bin/python"
   [[ -x "$V_PYTHON" ]] || croak "Something went wrong during python venv install."
@@ -271,6 +291,9 @@ for f in "${imports[@]}"; do
   }
   source "$srcfn"
 done
+
+# Set proxy
+set_proxy
 
 install_prereqs
 
