@@ -7,14 +7,41 @@ DEBUG=$YES
 VERBOSE=$YES
 
 
+croak() {
+  echo "FATAL ERROR: $*" 1>&2
+  exit 99
+}
+
+
+get_os_name() {
+  if [[ -r /etc/os-release ]] ; then
+    grep '^ID=' /etc/os-release | cut -d= -f2 | tr -cd '[A-Za-z0-9]'
+  fi
+}
+
+
 ensure_epel() {
   local _yumopts=( '-q' )
   [[ $DEBUG -eq $YES ]] && {
     set -x
     _yumopts=()
   }
-	yum -y "${_yumopts[@]}" install epel-release
+  local _osname=$( get_os_name )
+  local _pkgname
+  case "$_osname" in
+    rhel)
+      _pkgname='https://dl.fedoraproject.org/pub/epel/epel-release-latest-8.noarch.rpm'
+      ;;
+    centos)
+      _pkgname='epel-release'
+      ;;
+    *)
+      croak "Unsupported OS => '$_osname'"
+      ;;
+  esac
+	yum -y "${_yumopts[@]}" install "$_pkgname"
 }
+
 
 install_prereqs() {
   local _yumopts=( '-q' )
