@@ -1,0 +1,155 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              Setup network proxy
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+[[ -z "$HTTP_PROXY" ]] && HTTP_PROXY="${MASTER}:3128"
+YES=0
+NO=1
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+get_curl_proxy() {
+  local _proxy=""
+  # check for curl proxy
+  [[ -f ~/.curlrc ]] && \
+    _proxy=$( awk '/proxy/ {print $NF}; {next}' ~/.curlrc )
+  echo "$_proxy"
+}
+
+
+set_curl_proxy() {
+  local _proxy="$1"
+  local _curl_proxy=$( get_curl_proxy )
+  if [[ "$_curl_proxy" != "$_proxy" ]] ; then
+    echo "proxy = $_proxy" >> ~/.curlrc
+  fi
+}
+
+
+set_git_proxy() {
+  local _proxy="$1"
+  local _git_proxy
+  if [[ -n "$_proxy" ]] ; then
+    _git_proxy=$( git config --get http.proxy )
+    if [[ "$_git_proxy" != "$_proxy" ]] ; then
+      git config --global http.proxy "$_proxy"
+    fi
+  fi
+}
+
+
+set_yum_proxy() {
+  local _proxy="$1"
+  [[ -z "$_proxy" ]] && return 1
+  [[ -x /usr/bin/yum-config-manager ]] || croak 'cant find yum-config-manager'
+  /usr/bin/yum-config-manager --save --setopt=proxy=http://
+    
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+    Set yum, git, & curl proxy
+Usage:
+    $PRG [options] [PROXYSTRING]
+
+Options:
+    -h   Print this help message and exit.
+    -c   Skip curl proxy (default)
+    +c   Setup curl proxy
+    -g   Skip git proxy (default)
+    +g   Setup git proxy
+    -y   Skip yum proxy
+    +y   Setup yum proxy (default)
+
+Parameters:
+    PROXYSTRING - proxystring in HOST:PORT format
+
+Environment Variables:
+    HTTP_PROXY  - If PROXYSTRING is not present, use this value (if set).
+
+Default value:
+    If PROXYSTRING is not found from cmdline paramtere or environment variable, use '${MASTER}:3128'
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+SET_CURL=$NO
+SET_GIT=$NO
+SET_YUM=$YES
+ENDWHILE=$NO
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq $NO ]] ; do
+  case $1 in
+    -h) usage
+        exit 0
+        ;;
+    -c) SET_CURL=$NO
+        ;;
+    +c) SET_CURL=$YES
+        ;;
+    -g) SET_GIT=$NO
+        ;;
+    +g) SET_GIT=$YES
+        ;;
+    -y) SET_YUM=$NO
+        ;;
+    +y) SET_YUM=$YES
+        ;;
+    --) ENDWHILE=1
+        ;;
+    -* | +*) croak "Unknown option '$1'"
+        ;;
+     *) ENDWHILE=$YES
+        break
+        ;;
+  esac
+  shift
+done
+[[ $# -gt 0 ]] && HTTP_PROXY="$1"
+shift
+
+[[ $# -gt 0 ]] && croak 'unexpected parameters on cmdline'
+
+#
+# DO WORK
+#
+
+# stop if proxy not set
+[[ -z "$HTTP_PROXY" ]] && croak 'Empty proxy. Doing nothing.'
+
+[[ $SET_CURL -eq $YES ]] && set_curl_proxy "$HTTP_PROXY"
+[[ $SET_GIT -eq $YES ]] && set_git_proxy "$HTTP_PROXY"
+[[ $SET_YUM -eq $YES ]] && set_yum_proxy "$HTTP_PROXY"
