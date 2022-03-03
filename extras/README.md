@@ -20,3 +20,9 @@ bash xcat_install.sh
 
 ### xcat_setup.sh
 /root/xcat-tools/extras/xcat_setup.sh
+
+### wipealldisks
+A runcmd script to wipe all disks.
+`/opt/xcat/share/xcat/netboot/genesis/x86_64/fs/bin/wipealldisks`
+`mknb x86_64`
+`rinstall NODE runcmd=wipealldisks`

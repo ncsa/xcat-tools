@@ -1,0 +1,53 @@
+#!/bin/bash
+
+###
+# Description: Custom runcmd script for xcat.
+#              Wipe all disks
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+DEBUG=0
+ACTION=
+LOGFILE=/var/log/wipealldisks.log
+
+
+
+# FUNCTIONS
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+  echo "$*" >> "$LOGFILE"
+}
+
+
+wipe_device() {
+  local _full_path_to_device="$1"
+  local _action=dd
+  [[ $DEBUG -eq 1 ]] && _action='echo'
+  local _parms=("of=${_full_path_to_device}" "if=/dev/zero" "bs=1G" "status=progress")
+  logr "$(date) START $_full_path_to_device"
+  logr "$_action ${_parms[@]}"
+  set -x
+  $_action "${_parms[@]}"
+  local _rc=$?
+  set +x
+  logr "$(date) END $_full_path_to_device"
+  return "$_rc"
+}
+
+
+# DO WORK
+
+[[ $DEBUG -eq 1 ]] && ACTION='echo'
+
+devices=( $( ls /dev/disk/by-id | grep wwn | grep -v -- '-part' ) )
+for devID in "${devices[@]}"; do
+  wipe_device "/dev/disk/by-id/$devID" || logr "...failed"
+done
+
+logr "Devices wiped in ${SECONDS} seconds"
+
+exit 0
