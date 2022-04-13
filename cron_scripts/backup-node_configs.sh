@@ -161,6 +161,7 @@ for n in "${nodelist[@]}" ; do
   log "Node: '$n'"
   node_bkup_dir="$BKUP_BASE/$n"
   mkdir -p "$node_bkup_dir"
+  chmod 750 "$node_bkup_dir"
   for i in "${!BACKUP_SOURCES[@]}"; do
     src="${BACKUP_SOURCES[$i]}"
     tgt_fn="${BACKUP_TARGETS[$i]}"
