@@ -39,6 +39,7 @@ Usage:
 Options:
     -p PFX  String to be prepended to hostname.
     -s SFX  String to be appended to hostname.
+    -d DOM  Domain name to be added to hostname (must start with '.').
 ENDHERE
 }
 
@@ -60,6 +61,10 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
             shift
             SFX="$1"
             ;;
+        -d)
+            shift
+            DOM="$1"
+            ;;
         --)
             ENDWHILE=1
             ;;
@@ -78,12 +83,17 @@ done
 #
 # DO WORK
 #
-[[ -z "$PFX" && -z "$SFX" ]] && {
+[[ -z "$PFX" && -z "$SFX" && -z "$DOM" ]] && {
     logr 'No affixes provided. Exiting.'
-    exit 0
+    exit 2
 }
 
-FULLNODENAME="${PFX}${NODE}${SFX}"
+[[ ! -z "$DOM" && ! "$DOM" =~ ^\. ]] && {
+    logr 'Domain must start with . Exiting.'
+    exit 3
+}
+
+FULLNODENAME="${PFX}${NODE}${SFX}${DOM}"
 
 logr "Writing hostname '$FULLNODENAME' to /etc/hostname"
 echo "$FULLNODENAME" > /etc/hostname
