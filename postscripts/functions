@@ -1,0 +1,102 @@
+#!/bin/bash
+
+SYSTEMD=no
+egrep -q "release [7-8]" /etc/redhat-release && SYSTEMD=yes
+[ -f /etc/lsb-release ] && grep -q Ubuntu /etc/lsb-release && SYSTEMD=yes
+export SYSTEMD
+
+# Preserve groups in case postscripts are run by hand later
+if echo ${GROUP:-UnDeFiNeD} | grep -q UnDeFiNeD
+then
+   if [ -f /opt/xcat/xcatgroups ]
+   then
+      GROUP=`cat /opt/xcat/xcatgroups`
+   fi
+else
+   if [ ! -f /opt/xcat/xcatgroups ]
+   then
+      echo $GROUP >/opt/xcat/xcatgroups
+   fi
+fi
+
+sit-and-spin () {
+# usage - sit-and-spin delay message limit
+   SPIN_SETX=$-
+   set +x
+   if [ "$1" == "" ]
+   then
+      SLEEP=4
+   else
+      SLEEP=$1
+   fi
+   TEST=`echo $1 | sed -e "s/[0-9]//g"`
+   if [ "$TEST" != "" ]   # check for non-numeric argument
+   then
+      SLEEP=4  
+   fi
+
+   if [ "$3" == "" ]
+   then
+      LIMIT=0
+   else
+      LIMIT=$3
+   fi
+   TEST=`echo $3 | sed -e "s/[0-9]//g"`
+   if [ "$TEST" != "" ]   # check for non-numeric argument
+   then
+      LIMIT=0  
+   fi
+
+   BOOT_MAC=`cat /proc/cmdline |grep -o "BOOTIF=..-..-..-..-..-.." | sed -e "s/^.*=//"`
+   touch /root/continue
+   rm -f /root/exit
+   echo $0 >>/root/continue
+   echo $2 >>/root/continue
+   COUNT=0
+   while [ -f /root/continue ]
+   do
+      COUNT=`expr $COUNT + 1`
+      sleep $SLEEP
+      echo `hostname` "  "  $BOOT_MAC  " $0 -  $1 -  $2 -  $3"
+      if [ "$COUNT" == "$LIMIT" ]
+      then
+         rm -f /root/continue
+      fi
+      if [ -f /root/dumper ]
+      then
+         for var in `cat /root/dumper`
+         do
+            echo "echo $var - $`echo $var`" >/tmp/FUNCTION_PROC.$$
+            chmod 700 /tmp/FUNCTION_PROC.$$
+            source /tmp/FUNCTION_PROC.$$
+            rm -f /tmp/FUNCTION_PROC.$$
+         done
+         rm -f /root/dumper
+      fi
+   done
+   echo $SPIN_SETX | grep -q x && set -x
+   if [ -f /root/exit ]
+   then
+      rm -f /root/exit
+      exit
+   fi
+}
+
+chkconfig_systemctl () {
+   if echo $SYSTEMD | grep -q yes
+   then
+      COMMAND=systemctl
+      echo $2 | grep on && STATUS=enable
+      echo $2 | grep off && STATUS=disable
+      systemctl $STATUS $1
+   else
+      chkconfig $1 $2
+   fi
+}
+
+if-no-ib-exit () {
+	if ! ibstat | grep -q State
+	then
+	   exit   # exit if no IB card
+	fi
+}
