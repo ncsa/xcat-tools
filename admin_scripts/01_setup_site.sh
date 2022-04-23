@@ -49,7 +49,7 @@ assert_puppet_server_is_set() {
 mk_stanza() {
   [[ $DEBUG -eq $YES ]] && set -x
   local _forwarders=$( awk '
-/nameserver/ {
+$0 ~ /nameserver/ && $0 !~ /127.0.0.1/ {
   ns=ns "," $2
 }
 END {
