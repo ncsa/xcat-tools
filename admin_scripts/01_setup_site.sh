@@ -1,6 +1,8 @@
 #!/bin/bash
 
 # Populate the site table for a new xcat cluster
+# Set default netboot method
+# Create useful, common xCAT groups
 
 trap "exit 1" TERM
 export XCAT_TOOLS_TOP_PID=$BASHPID
@@ -75,6 +77,65 @@ ENDSTANZA
 }
 
 
+set_default_netboot() {
+	unset action
+	[[ $DRYRUN -eq $YES ]] && action=echo
+	$action chtab node=all noderes.netboot=xnba
+}
+
+
+assert_vmware_group() {
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _grname='vmware'
+  local _cmds=( 'mkdef' '-z' )
+  # do nothing if group is already defined
+  lsdef -t group -o "$_grname" &>/dev/null && return $OK
+  # do nothing if group is already defined
+  lsdef -t group -o vmware &>/dev/null && return $OK
+  # group is not defined, attempt to create it
+	[[ $DRYRUN -eq $YES ]] && _cmds=( 'cat' )
+  "${_cmds[@]}" <<ENDSTANZA
+$_grname:
+	objtype=group
+	grouptype=static
+	mgt=esx
+	vmmanager=esx
+ENDSTANZA
+}
+
+
+assert_physical_group() {
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _grname='physical'
+  local _cmds=( 'mkdef' '-z' )
+  # do nothing if group is already defined
+  lsdef -t group -o "$_grname" &>/dev/null && return $OK
+  # group is not defined, attempt to create it
+	[[ $DRYRUN -eq $YES ]] && _cmds=( 'cat' )
+  "${_cmds[@]}" <<ENDSTANZA
+$_grname:
+	objtype=group
+	grouptype=static
+	mgt=ipmi
+	serialport=0
+	serialspeed=115200
+ENDSTANZA
+}
+
+
+assert_dell_group() {
+  [[ $DEBUG -eq $YES ]] && set -x
+  local _grname='dell'
+  local _action=''
+  # do nothing if group is already defined
+  lsdef -t group -o "$_grname" &>/dev/null && return $OK
+  # group is not defined, attempt to create it
+	[[ $DRYRUN -eq $YES ]] && _action='echo'
+  $_action mkdef -t group dell
+  $_action chtab node=dell ipmi.username=root ipmi.password=calvin
+}
+
+
 usage() {
   cat <<ENDHERE
 
@@ -144,3 +205,11 @@ if [[ $DRYRUN -eq $YES ]] ; then
 else
   mk_stanza | chdef -z
 fi
+
+# Set netboot type (XNBA, ...)
+set_default_netboot
+
+# Create useful, common xCAT groups
+assert_vmware_group
+assert_physical_group
+assert_dell_group

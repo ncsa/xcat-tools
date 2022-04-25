@@ -61,17 +61,26 @@ Options:
   -d|--debug)    Enable debug mode; lots of messages and run in dry-run mode
   -h|--help)     Print this help message and exit
   -t|--template) Print a sample NODEFILE template
+  --no-hosts)    Do not run makehosts
+  --no-dns)      Do not run makedns
+  --no-dhcp)     Do not run makedhcp
 ENDHERE
 }
 
 # Read cmdline options and parameters
 DEBUG=$NO
 ENDWHILE=$NO
+RUN_MAKEDNS=$YES
+RUN_MAKEDHCP=$YES
+RUN_MAKEHOSTS=$YES
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq $NO ]] ; do
   case $1 in
     -d|--debug)     DEBUG=$YES;;
     -h|--help)      print_usage; exit 0;;
     -t|--template)  print_template; exit 0;;
+    --no-dns)       RUN_MAKEDNS=$NO;;
+    --no-dhcp)      RUN_MAKEDHCP=$NO;;
+    --no-hosts)     RUN_MAKEHOSTS=$NO;;
     --)             ENDWHILE=$YES;;
     -*)             echo "Invalid option '$1'"; exit 1;;
      *)             ENDWHILE=$YES; break;;
@@ -126,11 +135,21 @@ action=
 # Extra bmc info for legacy xcat tools
 [[ -n $BMC_IP ]] && $action chdef $NODE bmc=${BMC_IP}
 sleep 1
-$action makehosts $NODE
-sleep 1
-$action makedns $NODE
-sleep 1
-$action makedhcp -n
-sleep 1
+
+if [[ $RUN_MAKEHOSTS -eq $YES ]] ; then
+  $action makehosts $NODE
+  sleep 1
+fi
+
+if [[ $RUN_MAKEDNS -eq $YES ]] ; then
+  $action makedns $NODE
+  sleep 1
+fi
+
+if [[ $RUN_MAKEDHCP -eq $YES ]] ; then
+  $action makedhcp $NODE
+  sleep 1
+fi
+
 [[ -n $BMC_IP ]] && $action $MKGOCONS $NODE
 
