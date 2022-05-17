@@ -1,0 +1,119 @@
+#!/bin/bash
+
+###
+# Description: Run yum upgrade to upgrade all packages that need updating
+#              Expects that yum and repos are already installed and configured.
+#              Will schedule a reboot after the yum upgrade.
+# Usage:
+#      1. updatenode <noderange> -P "yum_upgrade [OPTS]"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+DEFAULTS[DISABLE_EXCLUDES]=all
+
+
+# GLOBAL SETTINGS
+
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+yum_upgrade() {
+    local _disable_excludes=$1
+    #local _env
+    logr "About to run yum upgrade"
+    set -x
+    /bin/yum upgrade -y --disableexcludes=${_disable_excludes}
+    set +x
+}
+
+
+schedule_reboot() {
+    logr "Scheduling reboot in 2 minutes"
+    set -x
+    /sbin/shutdown -r +2 "Reboot after yum upgrade"
+    set +x
+}
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    yum_upgrade [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    -d | --disableexludes [all|main|repoid]
+        Disable the excludes defined in your config files. Takes one of three options:
+          all == disable all excludes
+          main == disable excludes defined in [main] in yum.conf
+          repoid == disable excludes defined for that repo
+
+ENDHERE
+}
+
+
+# DO WORK
+DISABLE_EXCLUDES=${DEFAULTS[DISABLE_EXCLUDES]}
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    -d|--disableexcludes)
+        DISABLE_EXCLUDES="$2"
+        shift
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+logr "Starting yum upgrade"
+yum_upgrade $DISABLE_EXCLUDES
+logr "End of yum upgrade"
+
+# FOLLOWING CHECK DOES NOT SEEM SUFFICIENT
+# FOR NOW WE WILL ALWAYS REBOOT
+#[ $(/bin/needs-restarting -r >/dev/null ) ] && {
+    logr "Starting scheduling shutdown reboot"
+    schedule_reboot
+    logr "End of scheduling shutdown reboot"
+#}
+
+logr "end of yum_upgrade on OS '$OSVER' on node '$NODE'"
+
+exit 0
+
