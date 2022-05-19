@@ -1,0 +1,102 @@
+#!/bin/bash
+
+###
+# Description: Set RHEL subscription to a specific release EUS (Extended Update Support) version
+#      Defaults to release version of currently installed RHEL.
+#
+# Usage:
+#      1. updatenode <noderange> -P "rhel_release_set [OPTS]"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+DEFAULTS[VERSION]=$(grep '^VERSION_ID' /etc/os-release | awk -F'=' ' gsub(/"/,"") { print $2}')
+
+
+# GLOBAL SETTINGS
+
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+rhel_release_set() {
+    local _version=$1
+    local _major_version=$(echo ${_version} | cut -d. -f1 )
+    logr "About to set version ${_version} in subscription"
+    set -x
+    /sbin/subscription-manager release --set=${_version}
+    /sbin/subscription-manager repos --enable=rhel-${_major_version}-for-x86_64-appstream-eus-rpms
+    /sbin/subscription-manager repos --enable=rhel-${_major_version}-for-x86_64-baseos-eus-rpms
+    /sbin/subscription-manager repos --enable=codeready-builder-for-rhel-${_major_version}-x86_64-eus-rpms
+    set +x
+}
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    rhel_release_set [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    -v | --version [VERSION]
+        Specific version of RHEL to set EUS to
+
+ENDHERE
+}
+
+
+# DO WORK
+VERSION=${DEFAULTS[VERSION]}
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    -v|--version)
+        VERSION="$2"
+        shift
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+logr "Starting RHEL release set"
+rhel_release_set $VERSION
+logr "End of RHEL release set"
+
+logr "end of rhel_release_set on OS '$OSVER' on node '$NODE'"
+
+exit 0
