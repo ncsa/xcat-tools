@@ -65,13 +65,38 @@ set_git_proxy() {
   fi
 }
 
+set_rhsm_proxy() {
+  local _proxy="$1"
+  [[ -z "$_proxy" ]] && return 1
+  [[ -x /sbin/subscription-manager ]] || logr 'cant find subscription-manager, perhaps not a RHEL host'
+  [[ -x /sbin/subscription-manager ]] && {
+    local _proxy_hostname=$(echo ${_proxy} | cut -d: -f1 )
+    local _proxy_port=$(echo ${_proxy} | cut -d: -f2 )
+    logr "Setting RHSM proxy host: ${_proxy_hostname}"
+    /sbin/subscription-manager config --server.proxy_hostname=${_proxy_hostname}
+    logr "Setting RHSM proxy port: ${_proxy_port}"
+    /sbin/subscription-manager config --server.proxy_port=${_proxy_port}
+  }
+}
 
 set_yum_proxy() {
   local _proxy="$1"
   [[ -z "$_proxy" ]] && return 1
-  [[ -x /usr/bin/yum-config-manager ]] || croak 'cant find yum-config-manager'
-  /usr/bin/yum-config-manager --save --setopt=proxy=http://
-    
+  logr "Setting yum proxy: http://${_proxy}"
+  echo "proxy=http://${_proxy}" >> /etc/yum.conf
+  #[[ -x /bin/yum-config-manager ]] && {
+  #  # MUST BE RHEL 8 OR NEWER
+  #  logr "Setting yum proxy: http://${_proxy}"
+  #  /bin/yum-config-manager --save --setopt=proxy=http://${_proxy}
+  #}
+  #[[ -x /bin/yum-config-manager ]] || {
+  #  [[ -x /usr/bin/yum-config-manager ]] && {
+  #    # MUST BE RHEL 7 OR OLDER
+  #    logr "Setting yum proxy: http://${_proxy}"
+  #    /usr/bin/yum-config-manager --save --setopt=proxy=http://${_proxy}
+  #  }
+  #  [[ -x /usr/bin/yum-config-manager ]] || croak 'cant find yum-config-manager'
+  #}
 }
 
 
@@ -79,7 +104,7 @@ usage() {
   cat << ENDHERE
 
 $PRG
-    Set yum, git, & curl proxy
+    Set yum, rhsm, git, & curl proxy
 Usage:
     $PRG [options] [PROXYSTRING]
 
@@ -89,6 +114,8 @@ Options:
     +c   Setup curl proxy
     -g   Skip git proxy (default)
     +g   Setup git proxy
+    -r   Skip rhsm proxy
+    +r   Setup rhsm proxy (default)
     -y   Skip yum proxy
     +y   Setup yum proxy (default)
 
@@ -109,6 +136,7 @@ ENDHERE
 #
 SET_CURL=$NO
 SET_GIT=$NO
+SET_RHSM=$YES
 SET_YUM=$YES
 ENDWHILE=$NO
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq $NO ]] ; do
@@ -123,6 +151,10 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq $NO ]] ; do
     -g) SET_GIT=$NO
         ;;
     +g) SET_GIT=$YES
+        ;;
+    -r) SET_RHSM=$NO
+        ;;
+    +r) SET_RHSM=$YES
         ;;
     -y) SET_YUM=$NO
         ;;
@@ -152,4 +184,5 @@ shift
 
 [[ $SET_CURL -eq $YES ]] && set_curl_proxy "$HTTP_PROXY"
 [[ $SET_GIT -eq $YES ]] && set_git_proxy "$HTTP_PROXY"
+[[ $SET_RHSM -eq $YES ]] && set_rhsm_proxy "$HTTP_PROXY"
 [[ $SET_YUM -eq $YES ]] && set_yum_proxy "$HTTP_PROXY"
