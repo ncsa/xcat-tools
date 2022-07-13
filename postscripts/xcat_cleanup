@@ -105,4 +105,7 @@ if [[ 0 -eq "$nfsmounts" ]]; then
   uninstall_nfs_rpms
 fi
 
+logr "removing default xCAT0-configured repos"
+[[ -f /etc/yum.repos.d/local-repository-0.repo ]] && rm -f /etc/yum.repos.d/local-repository-0.repo
+
 exit 0
