@@ -20,10 +20,10 @@
 # Note: If config file is less than 1 hour old, assume it was restored from backup
 #       and do NOT set server.
 #       Contrariwise, if config file is more than 1 hour old, assume this is a new
-#       node and set server according to PUPPET_MASTER env var or $MASTER env var
+#       node and set server according to $PUPPETMASTER env var
 #
 # Usage:
-#      1. use $PUPPETMASTER or $MASTER as the puppet server (for new nodes only)
+#      1. use $PUPPETMASTER as the puppet server (for new nodes only)
 #         updatenode <noderange> -P "custom/puppet_configure"
 #
 # Source: https://github.com/ncsa/xcat-tools
@@ -42,6 +42,8 @@ REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
 RPM_SEARCH_LOCATIONS=( /xcatpost/custom/rpms )
 NOW=$(date +%s)
 MAX_CONF_AGE=3600
+PUPPETSERVER=$PUPPETMASTER
+PUPPETSERVERIP=""
 
 
 # FUNCTIONS
@@ -58,6 +60,18 @@ croak() {
 }
 
 
+set_hosts_entry() {
+    logr "enter '$FUNCNAME'..."
+    HOSTSFILE="/etc/hosts"
+    HOSTENTRY="$PUPPETSERVERIP $PUPPETSERVER"
+    logr "clearing $PUPPETSERVERIP from $HOSTSFILE"
+    grep -v "$PUPPETSERVERIP" $HOSTSFILE >> $HOSTSFILE
+    logr "adding '$HOSTENTRY' to $HOSTSFILE"
+    echo "$HOSTENTRY" >> $HOSTSFILE
+    logr "... exit '$FUNCNAME'"
+}
+
+
 set_server() {
     logr "enter '$FUNCNAME'..."
     let "min_conf_date = $NOW - $MAX_CONF_AGE"
@@ -65,10 +79,8 @@ set_server() {
     if [[ $config_date -lt $min_conf_date ]] ; then
         # Assume config is from rpm (it was not restored from a backup)
         # ie: this must be a new node, set server accordingly
-        server=$MASTER
-        [[ -n "$PUPPETMASTER" ]] && server=$PUPPETMASTER
-        logr "setting server set to '$server' in local config"
-        $PUPPET config set server "$server" --section agent
+        logr "setting server set to '$PUPPETSERVER' in local config"
+        $PUPPET config set server "$PUPPETSERVER" --section agent
         logr "verify server setting is saved in local config"
         $PUPPET config print server --section agent
     else
@@ -143,7 +155,52 @@ install_rpm() {
 }
 
 
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    puppet_configure [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    --host <HOSTNAME>
+        Set Puppet server to HOSTNAME
+    --ip <IPADDRESS>
+        Create local hosts entry for IPADDRESS to point to puppet server hostname
+
+ENDHERE
+}
+
+
 # DO WORK
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --host)
+        PUPPETSERVER="$2"
+        shift
+        ;;
+    --ip)
+        PUPPETSERVERIP="$2"
+        shift
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
 
 is_agent_installed || install_from_repo
 is_agent_installed || install_rpm
@@ -151,6 +208,9 @@ is_agent_installed || croak "Failed to install puppet-agent"
 
 set_server
 
+[[ -n "$PUPPETSERVERIP" ]] && set_hosts_entry
+
 logr "end of puppet_configure on OS '$OSVER' on node '$NODE'"
 
 exit 0
+
