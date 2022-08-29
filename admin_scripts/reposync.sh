@@ -83,7 +83,7 @@ do_reposync() {
         # Remove the prefix sync- just to keep names cleaner (nothing removed if sync- prefix is absent)
         dst_repo=${repo#"sync-"}
     
-        /usr/bin/reposync -p "${_repo_snap}/${dst_repo}" --newest-only --download-metadata --norepopath --repo="${repo}"
+        /usr/bin/reposync -p "${_repo_snap}/${dst_repo}" --newest-only --download-metadata --norepopath --repo="${repo}" --exclude="${EXCLUDES}"
     done
     
     # Setup a pointer to the most recent snapshot so we know what dir to copy-on-write next time
