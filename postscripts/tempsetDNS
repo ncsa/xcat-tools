@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if $(grep -Fq nameserver /etc/resolv.conf);then
+    exit 0
+else
+    echo "nameserver 141.142.2.2" >> /etc/resolv.conf
+    echo "nameserver 141.142.230.144" >> /etc/resolv.conf
+fi
