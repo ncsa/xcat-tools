@@ -7,6 +7,7 @@ BASE=___INSTALL_DIR___
 CONF_BASE=$BASE/conf/reposync.d
 LIB=$BASE/libs
 PRG=$( basename "$0" )
+RHSM_CERT_BASE=/etc/pki/entitlement
 TIMESTAMP=$(date +%F-%s)
 DEBUG=0
 
@@ -47,15 +48,35 @@ OPTIONS:
 ENDHERE
 }
 
-while [[ "$#" -gt 0 ]]; do
-    case $1 in
-        -h|--help) usage; exit 0;;
-        -f|--file) file="$2"; shift;;
-        -d|--debug) DEBUG=1; shift;;
-        *) echo "Unknown parameter passed: $1"; exit 1 ;;
-    esac
-    shift
-done
+# IF SYNCING RHSM MANAGED REPOS WE NEED TO MAKE SURE WE ARE POINTING TO THE LATEST entitlement CERTIFICATES
+do_update_rhsm_cert_links() {
+    [[ $DEBUG -eq 1 ]] && set -x
+
+    if [[ -d "$RHSM_CERT_BASE" ]]
+    then
+        echo "Updating RHSM entitlement certificate symlinks"
+#        KEY=$( find "$RHSM_CERT_BASE" -maxdepth 1 -mindepth 1 -iname '*-key.pem' | head -1 )
+#        CERT=$( find "$RHSM_CERT_BASE" -maxdepth 1 -mindepth 1 -iname '*.pem' -not -iname '*-key.pem' | head -1 )
+        KEY=$( ls -t $RHSM_CERT_BASE/*-key.pem | head -1 )
+        CERT=$( ls -t $RHSM_CERT_BASE/*.pem | grep -v "key.pem" | head -1 )
+
+        if [[ ! -z "$KEY" ]]
+        then
+            cd "$RHSM_CERT_BASE" && ln -sf "$(basename ${KEY})" key
+        else
+            echo "Warning: No RHSM entitlement certificate key found"
+        fi
+
+        if [[ ! -z "$CERT" ]]
+        then
+            cd "$RHSM_CERT_BASE" && ln -sf "$(basename ${CERT})" cert
+        else
+            echo "Warning: No RHSM entitlement public certificate found"
+        fi
+    else
+        echo "Warning: No RHSM entitlement certificates found"
+    fi
+}
 
 do_reposync() {
     [[ $DEBUG -eq 1 ]] && set -x
@@ -91,8 +112,19 @@ do_reposync() {
 
 }
 
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -h|--help) usage; exit 0;;
+        -f|--file) file="$2"; shift;;
+        -d|--debug) DEBUG=1; shift;;
+        *) echo "Unknown parameter passed: $1"; exit 1 ;;
+    esac
+    shift
+done
+
 [[ $DEBUG -eq 1 ]] && set -x
 
+do_update_rhsm_cert_links
 
 if [[ -f "$file" ]]; then
     repo_cfg_files=("$file")
