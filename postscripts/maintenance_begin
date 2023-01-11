@@ -1,0 +1,27 @@
+#!/bin/bash
+#/install/postscripts/custom/maintenance_begin
+
+set -x
+
+source /xcatpost/custom/functions
+
+trace-begin maintenance_begin
+
+# BELOW IS THE MAIN SECTION OF THE SCRIPT
+# COMMENT OUT ANY LINES AFTER MAINTENANCE WINDOW COMPLETED
+
+## DISABLE LOGIN
+#LOGIN_LOCK="/etc/nologin"
+#touch $LOGIN_LOCK
+
+## DISABLE GPFS
+#GPFS_LOCK="/root/no_gpfs"
+#touch $GPFS_LOCK
+
+## DISABLE LUSTRE
+## NOTE THIS IS NOT YET SUPPORTED IN THE LUSTRE PUPPET MODULE
+#LUSTRE_LOCK="/root/no_lustre"
+#touch $LUSTRE_LOCK
+
+trace-end maintenance_begin
+
