@@ -1,0 +1,102 @@
+#!/bin/bash
+#/install/postscripts/custom/maintenance_end
+#
+# NOTE: By default this script does not remove /etc/nologin
+#   If desired, that would need to be passed in as a parameter.
+
+set -x
+
+source /xcatpost/custom/functions
+
+####################################################################
+#
+# wait for lock files to disappear
+#
+# input : <sleep_time> <lock_files_pattern> <limit>
+#
+####################################################################
+function wait_for_maintenance_lock_files {
+   SPIN_SETX=$-
+   set +x
+   if [ "$1" == "" ]
+   then
+      SLEEP=30
+   else
+      SLEEP=$1
+   fi
+   TEST=`echo $1 | sed -e "s/[0-9]//g"`
+   if [ "$TEST" != "" ]   # check for non-numeric argument
+   then
+      SLEEP=4
+   fi
+
+   if [ "$2" == "" ]
+   then
+      LOCK_FILES="/root/no_*"
+   else
+      LOCK_FILES="$2"
+   fi
+
+   if [ "$3" == "" ]
+   then
+      LIMIT=0
+   else
+      LIMIT=$3
+   fi
+   TEST=`echo $3 | sed -e "s/[0-9]//g"`
+   if [ "$TEST" != "" ]   # check for non-numeric argument
+   then
+      LIMIT=0
+   fi
+
+   COUNT=0
+   check_if_files_present
+   while [ "$FILES_PRESENT" != "" ]
+   do
+      COUNT=`expr $COUNT + 1`
+      MOD=`expr $COUNT % 50`
+      if [ "$MOD" == "1" ]
+      then
+         set -x
+         trace maintenance_end "maintenance_end waiting on lock files: $FILES_PRESENT" || \
+           echo `date +%c` "maintenance_end waiting on lock files: $FILES_PRESENT"
+         set +x
+      fi
+      sleep $SLEEP
+      if [ "$COUNT" == "$LIMIT" ]
+      then
+         FILES_PRESENT=""
+      else
+         check_if_files_present
+      fi
+   done
+   check_if_files_present
+   if [ "$FILES_PRESENT" != "" ]
+   then
+      set -x
+      trace maintenance_end "Loop count limit reached" || \
+         echo maintenance_end "Loop count limit reached"
+      set +x
+   else
+      set -x
+      trace maintenance_end "No active maintenance lock files exist" || \
+         echo maintenance_end "No active maintenance lock files exist"
+      set +x
+   fi
+   echo $SPIN_SETX | grep -q x && set -x
+}
+
+function check_if_files_present {
+   FILES_PRESENT=""
+   for fyl in $LOCK_FILES
+   do
+      [ -f "$fyl" ] && FILES_PRESENT="$FILES_PRESENT $fyl"
+   done
+}
+
+trace-begin maintenance_end
+
+wait_for_maintenance_lock_files "$1" "$2" "$3"
+
+trace-end maintenance_end
+
