@@ -1,0 +1,34 @@
+#!/bin/bash
+
+###
+# Description: Disable ipv6 at the interface level for active ethernet interface
+#
+# You'll want to use this if the following are true:
+#   - You hosts are on RHEL 8.6 or later (unsure if 8.5 is impacted)
+#   - Your hosts disable ipv6 at the sysctl level (below has details how to check)
+#   - You do not disable NetworkManager
+#
+# If you meet the criteria above, you will likely see errors each minute from NetworkManager
+# in syslog that look like:
+#    NetworkManager[2057]: <warn>  [1674664803.9055] platform-linux: do-add-ip6-address[6: fe80::b8cf:ca0b:cfe7:adce]: failure 13 (Permission denied)
+#    NetworkManager[2057]: <warn>  [1674664805.9068] ipv6ll[80d9da72697021e4,ifindex=6]: changed: no IPv6 link local address to retry after Duplicate Address Detection failures (back off)
+#
+# To remove these errors you need to tell NetworkManager to disable ipv6 on each active interface,
+# which is what this script will do
+# 
+# Example how to check if a host has ipv6 disabled at sysctl level (this host does disable it):
+#   > sysctl -p | grep -i ipv6 
+#   net.ipv6.conf.all.disable_ipv6 = 1
+#   net.ipv6.conf.default.disable_ipv6 = 1
+#   net.ipv6.conf.lo.disable_ipv6 = 0
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -x
+
+active_ethernet_connections=$(nmcli -f DEVICE,TYPE -t connection show --active | grep ethernet | awk -F':' '{print $1}')
+
+for i in $active_ethernet_connections; do
+    nmcli device modify $i ipv6.method "disabled"
+done
