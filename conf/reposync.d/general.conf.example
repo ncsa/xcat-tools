@@ -1,0 +1,14 @@
+# This is an example config file for general repos (ones not tied to a specific OS version like RHEL 8.6 etc)
+# Either copy or rename this file to end with .conf to use it
+ARCH=x86_64
+EXCLUDES="" #Space separated list of rpms to exclude from syncing
+REPO_BASE_DIR=/install/repos
+REPO_DIR=$REPO_BASE_DIR/general/$ARCH
+REPOS=(
+# Comment out any repo like this
+#"sync-cuda"
+#"sync-epel"
+#"sync-influx"
+#"sync-mariadb-10.7"
+#"sync-puppet7"
+)
