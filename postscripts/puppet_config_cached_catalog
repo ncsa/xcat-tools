@@ -1,0 +1,106 @@
+#!/bin/bash
+
+###
+# Description: Configure puppet agent use_cached_catalog setting.
+#              Expects that puppet agent is already installed and configured.
+#              See also: postscripts/puppet_configure (in this repo)
+# Usage:
+#      1. updatenode <noderange> -P "puppet_config_cached_catalog [OPTS]"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+# GLOBAL SETTINGS
+PUPPET=/opt/puppetlabs/bin/puppet
+
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+disable_puppet_agent_use_cached_catalog() {
+    logr "Disabling puppet agent use_cached_catalog"
+    $PUPPET config set use_cached_catalog false --section agent
+    logr "Disabling puppet agent use_cached_catalog ... OK"
+}
+
+
+enable_puppet_agent_use_cached_catalog() {
+    logr "Enabling puppet agent use_cached_catalog"
+    $PUPPET config set use_cached_catalog true --section agent
+    logr "Enabling puppet agent use_cached_catalog ... OK"
+}
+
+
+finish() {
+    logr "end of puppet_config_cached_catalog on OS '$OSVER' on node '$NODE'"
+    exit 0
+}
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    puppet_config_cached_catalog [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    --true
+        Enable use_cached_catalog
+    --false
+        Disable use_cached_catalog
+
+ENDHERE
+}
+
+
+# DO WORK
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --true)
+        enable_puppet_agent_use_cached_catalog
+        finish
+        ;;
+    --false)
+        disable_puppet_agent_use_cached_catalog
+        finish
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+finish
+
+exit 0
