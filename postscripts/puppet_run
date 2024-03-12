@@ -22,7 +22,8 @@ logger -t xcat -p local4.info "running '$PRG' on node $NODE"
 declare -A DEFAULTS
 DEFAULTS[NUM_RUNS]=1
 DEFAULTS[PAUSE_SECS]=5
-
+DEFAULTS[RETRIES]=10
+DEFAULTS[BACKOFF_INTERVAL]=60
 
 # GLOBAL SETTINGS
 PUPPET=/opt/puppetlabs/bin/puppet
@@ -49,12 +50,34 @@ puppet_agent_runonce() {
     [[ -n "$_e" ]] && _env="--environment $_e"
     local _logdir=$( dirname $AGENTLOG )
     mkdir -p $_logdir
-    echo >> $AGENTLOG
-    date >> $AGENTLOG
-    echo "About to run puppet agent in '$_e' environment" >> $AGENTLOG
-    set -x
-    $PUPPET agent --test --logdest $AGENTLOG $_env
-    set +x
+
+    local _retry_count=0
+    while true; do
+        echo >> $AGENTLOG
+        date >> $AGENTLOG
+        echo "About to run puppet agent in '$_e' environment" >> $AGENTLOG
+        set -x
+        date
+        $PUPPET agent --test --logdest $AGENTLOG $_env
+        local _puppet_exit_code=$?
+        set +x
+
+        # Exit code 0 : Agent ran ok and made no changes
+        # Exit code 2 : Agent ran ok and did make changes
+        if [[ $_puppet_exit_code -eq 0 ]] || [[ $_puppet_exit_code -eq 2 ]]; then
+            break
+        fi
+
+        # If we make it here the puppet run failed
+        if [[ $_retry_count -eq $RETRIES ]]; then
+            puppet_agent_enable
+            croak "$(date) : Puppet agent failed after ${RETRIES} tries, giving up"
+        fi
+
+        let "_retry_count++"
+        logr "Puppet run failed, will retry in ${BACKOFF_INTERVAL} seconds (Retry $_retry_count of $RETRIES)"
+        sleep ${BACKOFF_INTERVAL}
+    done
 }
 
 
@@ -76,7 +99,11 @@ OPTIONS:
         Run agent N times before exiting
     -p | --pause_secs <N>
         Pause N seconds between multiple agent runs
-
+    -r | --retries <N>
+        Number of times to retry a puppet agent run if it fails
+    -b | --backoff_interval <N>
+        Number of seconds to wait between puppet agent retries when previous run fails
+        
 Note: ENV_NAME will be ignored by puppet master when using ENC
 ENDHERE
 }
@@ -85,6 +112,8 @@ ENDHERE
 # DO WORK
 NUM_RUNS=${DEFAULTS[NUM_RUNS]}
 PAUSE_SECS=${DEFAULTS[PAUSE_SECS]}
+RETRIES=${DEFAULTS[RETRIES]}
+BACKOFF_INTERVAL=${DEFAULTS[BACKOFF_INTERVAL]}
 ENDWHILE=0
 while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
   case $1 in
@@ -98,6 +127,14 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
         ;;
     -p|--pause_secs)
         PAUSE_SECS="$2"
+        shift
+        ;;
+    -r|--retries)
+        RETRIES="$2"
+        shift
+        ;;
+    -b|--backoff_interval)
+        BACKOFF_INTERVAL="$2"
         shift
         ;;
     --)
