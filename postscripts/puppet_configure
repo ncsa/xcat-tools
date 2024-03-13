@@ -7,6 +7,8 @@
 #     2. Check if puppet repo is configured: yes = install puppet-agent
 #     3. Check if puppet repo available in /install/postscripts/repos
 #     4. Check if puppet-agent rpm is available in /install/postscripts/custom/rpms
+# 2. Configure puppet server in puppet config file, if not already set
+# 3. Configure puppet certname in puppet config file, if not already set
 #
 # Note: Puppet agent service is started/enabled via puppet_run.
 #       Some use cases require puppet run to happen at a later time.
@@ -17,10 +19,8 @@
 #       - restore-node_configs
 #         + to restore those things above
 #
-# Note: If config file is less than 1 hour old, assume it was restored from backup
-#       and do NOT set server.
-#       Contrariwise, if config file is more than 1 hour old, assume this is a new
-#       node and set server according to $PUPPETMASTER env var
+# Note: If config file already contains server or certname, those settings are not
+#       added or updated.
 #
 # Usage:
 #      1. use $PUPPETMASTER as the puppet server (for new nodes only)
@@ -40,8 +40,6 @@ PUPPET=/opt/puppetlabs/bin/puppet
 REPO_BASEURL=   #explicitly set repo baseurl
 REPO_DIR_SEARCH_LOCATIONS=( /xcatpost/repos/puppet )
 RPM_SEARCH_LOCATIONS=( /xcatpost/custom/rpms )
-NOW=$(date +%s)
-MAX_CONF_AGE=3600
 PUPPETSERVER=$PUPPETMASTER
 PUPPETSERVERIP=""
 
@@ -74,17 +72,32 @@ set_hosts_entry() {
 
 set_server() {
     logr "enter '$FUNCNAME'..."
-    let "min_conf_date = $NOW - $MAX_CONF_AGE"
-    config_date=$(date -r /etc/puppetlabs/puppet/puppet.conf +%s)
-    if [[ $config_date -lt $min_conf_date ]] ; then
-        # Assume config is from rpm (it was not restored from a backup)
-        # ie: this must be a new node, set server accordingly
-        logr "setting server set to '$PUPPETSERVER' in local config"
+    if ! grep -qw server /etc/puppetlabs/puppet/puppet.conf ; then
+        logr "setting server setting to '$PUPPETSERVER' in local config"
         $PUPPET config set server "$PUPPETSERVER" --section agent
         logr "verify server setting is saved in local config"
         $PUPPET config print server --section agent
     else
-        logr "found a recently restored config file, not setting server"
+        logr "found existing server in config file, not setting server"
+    fi
+    logr "... exit '$FUNCNAME'"
+}
+
+
+set_certname() {
+    logr "enter '$FUNCNAME'..."
+    if ! grep -qw certname /etc/puppetlabs/puppet/puppet.conf ; then
+        if [ ! -z $DOMAIN ]; then
+            SET_CERTNAME=$NODE.$DOMAIN
+        else
+            SET_CERTNAME=$NODE.local
+        fi
+        logr "setting certname setting to '$SET_CERTNAME' in local config"
+        $PUPPET config set certname "$SET_CERTNAME" --section agent
+        logr "verify certname setting is saved in local config"
+        $PUPPET config print certname --section agent
+    else
+        logr "found existing certname in config file, not setting certname"
     fi
     logr "... exit '$FUNCNAME'"
 }
@@ -207,6 +220,7 @@ is_agent_installed || install_rpm
 is_agent_installed || croak "Failed to install puppet-agent"
 
 set_server
+set_certname
 
 [[ -n "$PUPPETSERVERIP" ]] && set_hosts_entry
 
