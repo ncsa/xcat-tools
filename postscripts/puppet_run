@@ -62,9 +62,11 @@ puppet_agent_runonce() {
         local _puppet_exit_code=$?
         set +x
 
-        # Exit code 0 : Agent ran ok and made no changes
-        # Exit code 2 : Agent ran ok and did make changes
-        if [[ $_puppet_exit_code -eq 0 ]] || [[ $_puppet_exit_code -eq 2 ]]; then
+        # Exit code 0 : The run succeeded with no changes or failures; the system was already in the desired state
+        # Exit code 2 : The run succeeded, and some resources were changed
+        # Exit code 4 : The run succeeded, and some resources failed
+        # Exit code 6 : The run succeeded, and included both changes and failures
+        if [[ $_puppet_exit_code -eq 0 ]] || [[ $_puppet_exit_code -eq 2 ]] || [[ $_puppet_exit_code -eq 4 ]] || [[ $_puppet_exit_code -eq 6 ]] ; then
             break
         fi
 
