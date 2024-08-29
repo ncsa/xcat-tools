@@ -1,0 +1,156 @@
+#!/bin/bash
+
+###
+# Description: Test that a (host) principal in the node's keytab is functional.
+#
+# Notes:
+#
+# 1. Does NOT know if a keytab should be present or not. Assumes
+#    the restore process was successful. If the default keytab is missing
+#    does NOT error; if a (custom) keytab is specified via the -k param
+#    and is missing the script WILL error.
+#
+# 2. Tests to make sure that kinit via the (default or specified) principal is possible.
+#
+# Requirement: Define alertemail in the site table. This could be
+#              an email address that sends to the appropriate alerts
+#              channel in Slack.
+#
+# Usage:
+#
+# - manual: updatenode <noderange> -P "custom/check_keytab"
+#
+# - postscript: include "custom/check_keytab"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+DEBUG=1
+PRINCIPAL="host/"`hostname -f`"@NCSA.EDU"
+KEYTAB="/etc/krb5.keytab"
+CUSTOM_KEYTAB=0
+KINIT_CACHE_PATH="/root/.check_keytab_tmp_cache"
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+
+  ## if sendmail is present and ALERTEMAIL is set, then email us too
+  which sendmail 2>&1 > /dev/null
+  if [ 0 -eq "$?" ]; then
+    if [ -n "$ALERTEMAIL" ]; then
+      echo "Subject: xCAT - $PRG postscript failed on $HOSTNAME" | sendmail "$ALERTEMAIL"
+    else
+      logr "ALERTEMAIL not set"
+    fi
+  else
+    logr "sendmail not present on PATH"
+  fi
+
+  exit 99
+}
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    check_keytab [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+    -p | --principal <PRINCIPAL>
+        (optional) Specify a custom principal to auth with. (Default
+        is to try a host principal matching the hostname.)
+    -k | --keytab <PATH>
+        (optional) Specify a custom keytab path.
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    -p|--principal)
+        PRINCIPAL="$2"
+        shift
+        ;;
+    -k|--keytab)
+        KEYTAB="$2"
+        CUSTOM_KEYTAB=1
+        shift
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+    esac
+    shift
+done
+
+
+#
+# DO WORK
+#
+
+## check if the keytab is present
+[[ 0 -lt "$DEBUG" ]] && echo "KEYTAB = $KEYTAB"
+[[ 0 -lt "$CUSTOM_KEYTAB" ]] && echo "CUSTOM_KEYTAB = $CUSTOM_KEYTAB"
+if [ ! -f "$KEYTAB" ]; then
+  ## if this is a custom keytab (specified with -k) then
+  ## we should error out
+  if [ 1 -eq "$CUSTOM_KEYTAB" ]; then
+    croak "custom keytab specified but not found"
+  else
+    logr "default keytab not found, assuming this is OK and exiting"
+    exit 0
+  fi
+fi
+
+## make sure klist binary is on the path
+which klist 2>&1 > /dev/null
+[[ 0 -eq "$?" ]] || croak "klist command not present on the PATH"
+
+## make sure the Kerberos principal is in the keytab
+[[ 0 -lt "$DEBUG" ]] && echo "PRINCIPAL = $PRINCIPAL"
+klist -k "$KEYTAB" | egrep -q " ${PRINCIPAL}$" || croak "PRINCIPAL $PRINCIPAL not present in KEYTAB $KEYTAB"
+
+## make sure kinit binary is on the path
+which kinit 2>&1 > /dev/null
+[[ 0 -eq "$?" ]] || croak "kinit command not present on the PATH"
+
+## make sure we can kinit
+kinit -k -t "$KEYTAB" -c "$KINIT_CACHE_PATH" "$PRINCIPAL" || croak "failed to kinit with PRINCIPAL $PRINCIPAL via KEYTAB $KEYTAB"
+kdestroy -c "$KINIT_CACHE_PATH"
