@@ -27,7 +27,7 @@
 
 set -x
 
-active_ethernet_connections=$(nmcli -f DEVICE,TYPE,NAME -t connection show --active | egrep "ethernet|bond" | grep -v slave | awk -F':' '{print $1}')
+active_ethernet_connections=$(nmcli -f DEVICE,TYPE,SLAVE -t connection show --active | awk -F':' '($2 ~ /bond|ethernet|vlan/ ) && ($3 != "bond") {print $1}')
 
 for i in $active_ethernet_connections; do
     nmcli device modify $i ipv6.method "disabled"
