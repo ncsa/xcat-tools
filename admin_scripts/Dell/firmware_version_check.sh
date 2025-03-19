@@ -41,9 +41,9 @@ do
 
   # If the above command times out, print that it timed out
   if [ -z "$model" ]; then
-    printf "Timed Out \n"
+    printf "Timed Out\n"
   else
-    printf "%s \n" "$model"
+    printf "%s\n" "$model"
   fi
 
 done
