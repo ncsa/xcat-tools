@@ -25,7 +25,7 @@ done
 
 # Print table headers with formatting
 printf "Running scan on noderange: $RANGE \n"
-printf "%*s %10s %-15s %-19s %-20s \n" "$max" "Nodename" ""  "Bios" "iDRAC" "Model"
+printf "%*s %10s %-15s %-19s %-20s \n" "$max" "Node" ""  "Bios" "iDRAC" "Model"
 printf "__________________________________________________________________________\n"
 
 for i in "${ARRAY[@]}"
@@ -37,6 +37,13 @@ do
   printf "%-5s"
 
   # Pull hardware model number through dmidecode, and filter out "Poweredge" out of model name.
-  timeout 15 ssh $i dmidecode -s system-product-name | awk '{ print $2 }'
+  model=$(timeout 15 ssh $i dmidecode -s system-product-name | awk '{ print $2 }')
+
+  # If the above command times out, print that it timed out
+  if [ -z "$model" ]; then
+    printf "Timed Out \n"
+  else
+    printf "%s \n" "$model"
+  fi
 
 done
