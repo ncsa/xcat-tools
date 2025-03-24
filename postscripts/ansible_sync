@@ -1,0 +1,66 @@
+#!/bin/bash
+
+###
+# Description: Sync ansible repo and vault password from xCAT server to deployed node
+#
+# Syncs ansible project repo and ansible vault password from /install/ansible on xCAT
+# to /root/ansible on the deployed node.  This allows postscript custom/ansible_playbook
+# to use the local ansible files synced to the server to run ansible playbook using
+# those files during the initial xCAT deployment postscript process.
+#
+# See: https://wiki.ncsa.illinois.edu/display/ICI/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnxCATServer
+# 
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -x
+
+SOURCE_DIR="/install/ansible"
+TARGET_DIR="/root/ansible"
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "$PRG: running '$PRG' on node $NODE"
+source /xcatpost/custom/functions
+trace-begin $PRG
+
+logger -t xcat -p local4.info "$PRG: /install mount: $(df -hP /install | grep install)"
+mount | grep "$MASTER:$INSTALLDIR on /install" && logger -t xcat -p local4.info "$PRG: $MASTER:$INSTALLDIR is already mounted"
+mount | grep "$MASTER:$INSTALLDIR on /install" || /xcatpost/mountinstall
+
+# FIGURE OUT WHAT ANSIBLE PROJECT TO USE
+# DEFAULT PROJECT SHOULD BE SET IN SITE TABLE
+# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE
+if [[ $GROUP == *"ANSPROJ_"* ]]; then
+    ANSIBLE_PROJECT=$(echo "$GROUP" | grep -o 'ANSPROJ_[^,]*' | cut -d'_' -f2)
+    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from group ANSPROJ_*"
+elif [[ -n $ANSIBLEPROJECT ]]; then
+    ANSIBLE_PROJECT=$ANSIBLEPROJECT
+    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from xCAT site table"
+else
+    ANSIBLE_PROJECT="control-ansible"
+    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from default in postscript"
+fi
+
+PASSWORD="${ANSIBLE_PROJECT}-vault-password"
+
+#mkdir -p ${TARGET_DIR}/${ANSIBLE_PROJECT}
+mkdir -p ${TARGET_DIR}/
+
+cp -apr ${SOURCE_DIR}/${ANSIBLE_PROJECT} ${TARGET_DIR}/ \
+  && trace $PRG "Copied ${SOURCE_DIR}/${ANSIBLE_PROJECT} to ${TARGET_DIR}/" \
+  || trace $PRG "Failed to copy ${SOURCE_DIR}/${ANSIBLE_PROJECT} to ${TARGET_DIR}/"
+# USING rsync SOMEHOW BREAKS THINGS NETWORKING AFTER THE HOST REBOOTS
+#rsync -av ${SOURCE_DIR}/${ANSIBLE_PROJECT} ${TARGET_DIR}/
+
+cp -apr ${SOURCE_DIR}/${PASSWORD} ${TARGET_DIR}/ \
+  && trace $PRG "Copied ${SOURCE_DIR}/${PASSWORD} to ${TARGET_DIR}/" \
+  || trace $PRG "Failed to copy  ${SOURCE_DIR}/${PASSWORD} to ${TARGET_DIR}/"
+chmod 0400 ${TARGET_DIR}/${PASSWORD}
+
+logger -t xcat -p local4.info "$PRG: end of '$PRG'"
+trace-end $PRG
+
+set +x
+
+exit 0
