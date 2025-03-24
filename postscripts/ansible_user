@@ -1,0 +1,153 @@
+#!/bin/bash
+
+###
+# Description: Setup ansible user for use by Ansible
+#
+# You must provide the ansible user's authorized ssh keys via the xCAT site table.
+# Set the following site table variable as follows:
+#   "ansibleauthkeys","ssh-rsa AAAAB... root@xcat.local,ssh-ed25519 AAAAC... ansible@ansible.local",,
+#
+# This configuration eventually gets a more hardened configuration via an Ansible
+# playbook.  But this script gets the basics in place so that the ansible user can
+# be used for initial Ansible tasks.
+#
+# This script skips restricting access to only from specific addresses.
+# It skips:
+#   - CIDRs in SSHd match block
+#   - Setup of firewall rules
+#   - Entries in pam security access.conf
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -x
+
+logger -t xcat "$0: running $0 on `hostname`"
+source /xcatpost/custom/functions
+
+trace-begin $0
+
+# Define variables (replace these with actual values or source from a config file)
+ANSIBLE_USER_NAME="ansible"
+ANSIBLE_USER_GROUP="ansible"
+ANSIBLE_USER_COMMENT="Ansible Automation User"
+ANSIBLE_USER_DEFAULT_UID=59211
+ANSIBLE_USER_HOME="/home/$ANSIBLE_USER_NAME"
+
+# Default values
+ANSIBLE_USER_UID=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --uid)
+            ANSIBLE_USER_UID="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# Fallback to environment variables if not set
+ANSIBLE_USER_UID="${ANSIBLE_USER_UID:-${ANSIBLEUID:-$ANSIBLE_USER_DEFAULT_UID}}"
+
+AUTH_KEYS="${ANSIBLEAUTHKEYS}"
+
+if [ -z "$AUTH_KEYS" ]; then
+    echo "Error: Authorized keys entries not specified. Set ansibleauthkeys in xCAT site table."
+    exit 1
+fi
+
+if [ -z "$ANSIBLE_USER_UID" ]; then
+    echo "Error: Ansible user uid not specified. Use --uid or set ansibleuid in xCAT site table."
+    exit 1
+fi
+
+# Add group
+if ! getent group "$ANSIBLE_USER_GROUP" > /dev/null; then
+  groupadd --system "$ANSIBLE_USER_GROUP"
+  trace $0 "Added group $ANSIBLE_USER_GROUP"
+fi
+
+# Add user
+if ! id "$ANSIBLE_USER_NAME" > /dev/null 2>&1; then
+  useradd -m -c "$ANSIBLE_USER_COMMENT" -g "$ANSIBLE_USER_GROUP" -s /bin/bash -u "$ANSIBLE_USER_UID" "$ANSIBLE_USER_NAME"
+  trace $0 "Added user $ANSIBLE_USER_NAME"
+fi
+
+# Create .ssh directory
+mkdir -p "$ANSIBLE_USER_HOME/.ssh"
+chown "$ANSIBLE_USER_NAME:$ANSIBLE_USER_GROUP" "$ANSIBLE_USER_HOME/.ssh"
+chmod 700 "$ANSIBLE_USER_HOME/.ssh"
+
+# Add authorized_keys
+trace $0 "Using AUTH_KEYS: ${AUTH_KEYS}"
+# Convert comma-separated string to array using a loop
+AUTH_KEYS_ARRAY=()
+while IFS=',' read -ra keys; do
+  for key in "${keys[@]}"; do
+    AUTH_KEYS_ARRAY+=("$key")
+  done
+done <<< "$AUTH_KEYS"
+# Create or clear the authorized_keys file
+: > "$ANSIBLE_USER_HOME/.ssh/authorized_keys"  # Clear file
+for key in "${AUTH_KEYS_ARRAY[@]}"; do
+  echo "$key" >> "$ANSIBLE_USER_HOME/.ssh/authorized_keys"
+done
+# Set correct permissions
+chown "$ANSIBLE_USER_NAME:$ANSIBLE_USER_GROUP" "$ANSIBLE_USER_HOME/.ssh/authorized_keys"
+chmod 600 "$ANSIBLE_USER_HOME/.ssh/authorized_keys"
+trace $0 "Added $ANSIBLE_USER_HOME/.ssh/authorized_keys"
+
+# Add SSHD Match block
+# Define the sshd file path
+SSHD_FILE="/etc/ssh/sshd_config.d/10-ansible.conf"
+mkdir -p /etc/ssh/sshd_config.d
+# ENSURE sshd_config CONTAINS INCLUDE
+CONFIG_FILE="/etc/ssh/sshd_config"
+INCLUDE_LINE="Include /etc/ssh/sshd_config.d/*.conf"
+# Check if the line already exists
+if ! grep -Fxq "$INCLUDE_LINE" "$CONFIG_FILE"; then
+    # Insert the line after the first comment block or at the very top
+    sed -i "1i$INCLUDE_LINE" "$CONFIG_FILE"
+    trace $0 "Added Include line to the top of $CONFIG_FILE"
+fi
+# Write the SSHD config using a here-document
+cat <<EOF > "$SSHD_FILE"
+Match User "$ANSIBLE_USER_NAME" Group "$ANSIBLE_USER_GROUP"
+  AllowGroups $ANSIBLE_USER_GROUP
+  AllowUsers $ANSIBLE_USER_NAME
+  AuthenticationMethods publickey
+  Banner none
+  DisableForwarding no
+  GSSAPIAuthentication no
+  KerberosAuthentication no
+  MaxAuthTries 6
+  MaxSessions 10
+  PasswordAuthentication no
+  PubkeyAuthentication yes
+  X11Forwarding no
+EOF
+# Set correct permissions
+chown root:root "$SSHD_FILE"
+chmod 0600 "$SSHD_FILE"
+systemctl restart sshd
+trace $0 "Added sshd matchblock"
+
+# Configure sudoers
+# Define the sudoers file path
+SUDOERS_FILE="/etc/sudoers.d/10_ansible_user"
+# Write the content directly using a here-document
+cat <<EOF > "$SUDOERS_FILE"
+# ALLOW ANSIBLE GROUP TO SUDO WITHOUT PASSWORD
+Defaults:%${ANSIBLE_USER_GROUP} !mail_always
+Defaults:%${ANSIBLE_USER_GROUP} !requiretty
+%${ANSIBLE_USER_GROUP} ALL=(ALL) NOPASSWD: NOMAIL: ALL
+EOF
+# Set correct permissions
+chown root:root "$SUDOERS_FILE"
+chmod 0440 "$SUDOERS_FILE"
+trace $0 "Added sudoers config"
+
+trace-end $0
