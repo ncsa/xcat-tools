@@ -1,0 +1,30 @@
+# Example configuration file for the IB performance script (admin_scripts/ib_performance.sh)
+# Invoked with the -c flag, e.g. ib_performance.sh -c CONFIG
+#
+# The script will source any defined parameters from the configuration file.
+# Below are some example snippets of how a configuration file could be used. Each snippet would be its own file.
+# 
+#
+### A general IB fabric performance test ###
+HOST=node001
+RANGE=all
+VALUE=11000
+
+### Testing a set of nodes that have multiple IB devices ###
+HOST=node002
+RANGE=ibnodes
+VALUE=10000
+DEV=mlx5_2
+
+### Testing on specific ports on specific hosts ###
+HOST=test001
+RANGE=test[201-210]
+VALUE=5000
+PORT=55555
+
+### Testing taiga side on lnet routers by specifying TARGET, connects tg-lnet01 to lnet02, lnet03 etc. ###
+HOST=lnet01
+TARGET=tg-lnet01
+RANGE=lnet
+VALUE=10000
+PORT=988
