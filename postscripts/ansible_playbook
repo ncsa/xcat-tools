@@ -1,0 +1,190 @@
+#!/bin/bash
+
+###
+# Description: Run ansible-playbook against the locally synced ansible repo and vault password
+# 
+# This script does the following:
+# 1. Install ansible and prerequisites.
+# 2. Determine which Ansible groups match up with node's xCAT groups.
+# 3. Update Ansible local inventory file to set the Ansible group from xCAT group
+# 4. Determine which Ansible project repo to use.
+# 5. Determine and checkout which branch of the Ansible project repo to use.
+# 6. Run ansible-playbook on the deployed node, logging output to:
+#      /root/xcat_ansible_playbook_output.txt
+#
+# See: https://wiki.ncsa.illinois.edu/display/ICI/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnxCATServer
+# 
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -x
+# Set to 0 : Exit code of the playbook run does not influence the exit code of this postscript
+# Set to 1 : This postscript will exit with the same exit code as the playbook
+IGNORE_PLAYBOOK_EXIT_CODE=1
+
+EPEL_PKG_NAME="epel-release"
+EPEL_PKG_URL="https://dl.fedoraproject.org/pub/epel/epel-release-latest-`awk -F'release ' '{print $2}' /etc/redhat-release | cut -d'.' -f1`.noarch.rpm"
+
+HOSTNAME=`hostname -s`
+logger -t xcat "$0: running $0 on `hostname`"
+source /xcatpost/custom/functions
+
+# FUNCTIONS
+
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+is_ansible_installed() {
+    logr "is ansible installed"
+    dnf list installed ansible > /dev/null 2>&1
+    local _rc=$?
+    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
+    return $_rc
+}
+
+is_ansible_available() {
+    logr "is ansible available"
+    dnf list available ansible > /dev/null 2>&1 
+    local _rc=$?
+    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
+    return $_rc
+}
+
+trace-begin $0
+
+trace $0 "Installing dependency packages: ansible, git"
+# IF ansible NOT INSTALLED, INSTALL IT
+is_ansible_installed || ( is_ansible_available && dnf install -y ansible )
+# IF ansible NOT AVAILABLE FROM DEFAULT REPOS TEMPORARILY INSTALL EPEL IN ORDER TO INSTALL ANSIBLE
+is_ansible_installed || ( dnf install -y ${EPEL_PKG_URL} && TEMP_EPEL_INSTALL=1 && dnf install -y ansible )
+is_ansible_installed || croak "Cannot install ansible"
+
+# IF git NOT INSTALLED, INSTALL IT
+dnf list installed git || ( dnf install -y git && TEMP_GIT_INSTALL=1 )
+# IF epel WAS INSTALLED HERE REMOVE IT NOW THAT THE PACKAGES WERE INSTALLED
+if [ "${TEMP_EPEL_INSTALL:-0}" -eq 1 ]; then
+    dnf remove -y "$EPEL_PKG_NAME"
+    trace $0 "Removed EPEL that was temporarily installed in order to install ansible"
+fi
+trace $0 "Finished installing dependency packages: ansible, git"
+
+# GET NODE'S groups FROM xCAT FILTERING OUT ANY ANS* GROUPS
+GROUPJSON=$(echo "$GROUP" | tr ',' '\n' | grep -v '^ANS' | tr '\n' ',' | sed 's/,$//' | sed "s/,/','/g" | sed "s/^/['/" | sed "s/$/']/")
+trace $0 "$HOSTNAME belongs to groups: $GROUPJSON"
+
+# FIGURE OUT WHAT ANSIBLE PROJECT TO USE
+# DEFAULT PROJECT SHOULD BE SET IN SITE TABLE
+# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE
+if [[ $GROUP == *"ANSPROJ_"* ]]; then
+    ANSIBLE_PROJECT=$(echo "$GROUP" | grep -o 'ANSPROJ_[^,]*' | cut -d'_' -f2)
+    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from group ANSPROJ_*"
+elif [[ -n $ANSIBLEPROJECT ]]; then
+    ANSIBLE_PROJECT=$ANSIBLEPROJECT
+    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from xCAT site table"
+else
+    ANSIBLE_PROJECT="control-ansible"
+    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from default in postscript"
+fi
+
+ANSIBLEPATH="/root/ansible/${ANSIBLE_PROJECT}"
+trace $0 "Using path: $ANSIBLEPATH"
+PASSWORD="${ANSIBLEPATH}-vault-password"
+trace $0 "Using password file: $PASSWORD"
+chmod 0400 $PASSWORD
+
+# FIGURE OUT WHAT ANSIBLE PROJECT GIT BRANCH TO USE
+# DEFAULT BRANCH SHOULD BE SET IN SITE TABLE
+# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE - SWAP '/' WITH '.' IN xCAT
+if [[ $GROUP == *"ANSBRANCH_"* ]]; then
+    ANSIBLE_BRANCH=$(echo "$GROUP" | grep -o 'ANSBRANCH_[^,]*' | cut -d'_' -f2  | tr '.' '/')
+    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from group ANSBRANCH_*"
+elif [[ -n $ANSIBLEPROJECTBRANCH ]]; then
+    ANSIBLE_BRANCH=$(echo $ANSIBLEPROJECTBRANCH | tr '.' '/')
+    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from xCAT site table"
+else
+    ANSIBLE_BRANCH="main"
+    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from default in postscript"
+fi
+trace $0 "Checking out $ANSIBLE_PROJECT branch $ANSIBLE_BRANCH"
+cd $ANSIBLEPATH && git checkout ${ANSIBLE_BRANCH} 
+
+# IF git WAS INSTALLED HERE REMOVE IT NOW THAT THE PACKAGES WERE INSTALLED
+if [ "${TEMP_GIT_INSTALL:-0}" -eq 1 ]; then
+    dnf remove -y git
+    trace $0 "Removed git that was temporarily installed to support ansible"
+fi
+
+# wglick - 2025-03-25
+# IS THE FOLLOWING REALLY THE BEST LOGIC FOR SETTING ANSIBLE CHILDREN/GROUPS?
+# - DO WE WANT TO LOOK AT ANSIBLE GROUPS ONLY FROM inventory/group_vars/?
+#   - WHAT IF WE HAVE A VALID ANSIBLE GROUP WITHOUT UNIQUE group_var DATA?
+# - AND/OR DO WE WANT TO LOOK IN inventory/*.yml
+#   - THIS WOULD LET US SET BY hostname INSTEAD OF XCAT GROUP
+
+# CUSTOMIZE inventory/local.yml TO HAVE CHILDREN THAT MATCH HOSTS GROUPS
+# Directory containing the .yml files
+directory="$ANSIBLEPATH/inventory/group_vars/"
+# Array to store the basenames of .yml files
+yml_files=()
+# Loop through the .yml files in the directory
+for file in "$directory"*.yml; do
+  # Exclude 'all.yml'
+  if [[ $(basename "$file") != "all.yml" ]]; then
+    # Get the basename without the .yml extension and add it to the array
+    yml_files+=("$(basename "$file" .yml)")
+  fi
+done
+trace $0 "Ansible inventory has these group_vars: ${yml_files[@]}"
+# Convert GROUP variable to an array
+IFS=',' read -r -a group_array <<< "$GROUP"
+trace $0 "$HOSTNAME belongs to xcat groups: ${group_array[@]}"
+# Find the intersection of group_array and yml_files
+CHILDREN=()
+for group in "${group_array[@]}"; do
+  for yml in "${yml_files[@]}"; do
+    if [[ "$group" == "$yml" ]]; then
+      CHILDREN+=("$group")
+    fi
+  done
+done
+trace $0 "$HOSTNAME belongs to ansible groups: ${CHILDREN[@]}"
+echo "  children:" >> $ANSIBLEPATH/inventory/local.yml
+# Loop over each CHILDREN element to echo some content
+for child in "${CHILDREN[@]}"; do
+  trace $0 "Processing $child"
+  echo "    $child:" >> $ANSIBLEPATH/inventory/local.yml
+  echo "      hosts:" >> $ANSIBLEPATH/inventory/local.yml
+  echo "        local:" >> $ANSIBLEPATH/inventory/local.yml
+done
+
+ANSIBLECOMMAND="ansible-playbook -i inventory/local.yml playbooks/site.yml --vault-password-file $PASSWORD "
+trace $0 "Running ansible-playbook as follows:"
+trace $0 "  $ANSIBLECOMMAND | "
+cd $ANSIBLEPATH
+$ANSIBLECOMMAND &> /root/xcat_ansible_playbook_output.txt
+ANSIBLE_PLAYBOOK_EXIT_CODE=$?
+if [[ $ANSIBLE_PLAYBOOK_EXIT_CODE -eq 0 ]]; then
+  trace $0 "Finished running ansible-playbook - Run was successful"
+else
+  trace $0 "Finished running ansible-playbook - Playbook exited non-zero: $ANSIBLE_PLAYBOOK_EXIT_CODE"
+fi
+
+#trace $0 "Cleanup ansible stuff"
+# WE COULD OPTIONALLY...
+#   REMOVE ansible PACKAGE
+#   REMOVE /root/ansible
+
+trace-end $0
+
+if [[ $IGNORE_PLAYBOOK_EXIT_CODE -eq 1 ]]; then
+  exit $ANSIBLE_PLAYBOOK_EXIT_CODE
+fi

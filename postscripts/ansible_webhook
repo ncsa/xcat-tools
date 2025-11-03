@@ -1,0 +1,129 @@
+#!/bin/bash
+
+###
+# Description: Call a webhook to trigger an ansible-playbook run for the specific host
+#
+# This script does the following:
+# 1. Install curl and sets HTTPPROXY
+# 2. Calls webhook to run ansible playbook via Semaphore, etc.
+#
+# The webhook URL needs to be set via either:
+# a) command line option -u (takes precedence)
+# b) or the 'ansiblewebhook' value in the xCAT site table, e.g.:
+#   "ansiblewebhook","https://ici-ansible.ncsa.illinois.edu/api/integrations/...",,
+#
+# See:
+# https://wiki.ncsa.illinois.edu/display/AN/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnxCATServer
+# https://wiki.ncsa.illinois.edu/display/AN/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnSemaphoreServer
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -x
+
+ANSIBLE_START_TIMEOUT=300  # 5 minutes in seconds
+ANSIBLE_ACTIVITY_TIMEOUT=120  # 2 minutes in seconds
+HOSTNAME=`hostname -s`
+logger -t xcat "$0: running $0 on `hostname`"
+source /xcatpost/custom/functions
+
+trace-begin $0
+
+# Initialize WEBHOOK as empty
+WEBHOOK=""
+
+# PARSE COMMAND-LINE OPTIONS
+while getopts "u:h" opt; do
+  case $opt in
+    u)
+      WEBHOOK="$OPTARG"
+      ;;
+    h)
+      echo "Usage: $0 [-u webhook_url]"
+      exit 1
+      ;;
+  esac
+done
+
+# IF -u WAS NOT USED AND ANSIBLEWEBHOOK IS SET, ASSIGN IT TO WEBHOOK
+# ANSIBLEWEBHOOK COMES FROM ansiblewebhook IN XCAT SITE TABLE
+if [ -z "$WEBHOOK" ] && [ -n "$ANSIBLEWEBHOOK" ]; then
+  WEBHOOK="$ANSIBLEWEBHOOK"
+fi
+
+# Check if WEBHOOK is still empty or null
+if [ -z "$WEBHOOK" ]; then
+  trace $0 "WEBHOOK is not set. Use -u or set ANSIBLEWEBHOOK in xCAT site table. Exiting..."
+  exit 1
+fi
+
+trace $0 "WEBHOOK is set to: $WEBHOOK"
+
+trace $0 "Installing dependency packages: curl"
+# IF ansible NOT INSTALLED, INSTALL IT, OPTIONALLY INSTALLING EPEL IN ORDER TO INSTALL IT
+dnf list installed curl || \
+    dnf install -y curl
+trace $0 "Finished installing dependency packages: curl"
+
+trace $0 "Set HTTPPROXY environment variables"
+export ftp_proxy=http://httpproxy.ncsa.illinois.edu:3128/
+export http_proxy=http://httpproxy.ncsa.illinois.edu:3128/
+export https_proxy=http://httpproxy.ncsa.illinois.edu:3128/
+export no_proxy=internal.ncsa.edu,ncsa.illinois.edu,localhost,127.0.0.1
+
+trace $0 "Call ansible/semaphore webhook to run default ansible playbook"
+curl -k -X POST \
+  -H "Content-Type: application/json" \
+  $WEBHOOK \
+  -d "{\"host\":\"${HOSTNAME}*\"}"
+
+#!/bin/bash
+
+# Use tail to follow the log file and grep to filter lines
+trace $0 "Wait for Ansible activity via logs"
+
+LOG_FILE="/var/log/messages"
+START_TIME=$(date +%s)
+LAST_TRACE_TIME=$START_TIME
+TRACE_INTERVAL=30  # seconds
+tail -F "$LOG_FILE" | while read -r line; do
+  CURRENT_TIME=$(date +%s)
+  ELAPSED=$((CURRENT_TIME - START_TIME))
+
+  # Send trace message every TRACE_INTERVAL seconds
+  TRACE_ELAPSED=$((CURRENT_TIME - LAST_TRACE_TIME))
+  if [ "$TRACE_ELAPSED" -ge "$TRACE_INTERVAL" ]; then
+    trace $0 "Still waiting for Ansible activity... elapsed time: ${ELAPSED} seconds"
+    LAST_TRACE_TIME=$CURRENT_TIME
+  fi
+
+  if echo "$line" | grep -iq "python" && echo "$line" | grep -iq "ansible"; then
+    START_TIMESTAMP=$(date -d "$(echo "$line" | awk '{print $1, $2, $3}')" +%s)
+    trace $0 "Detected Ansible playbook activity at timestamp: ${START_TIMESTAMP}"
+    pkill -P $$ tail  # Terminate tail process
+    break
+  fi
+
+  if [ "$ELAPSED" -ge "$ANSIBLE_START_TIMEOUT" ]; then
+    trace $0 "Timeout reached: No Ansible activity detected within ${ANSIBLE_START_TIMEOUT} seconds."
+    pkill -P $$ tail  # Terminate tail process
+    exit 1
+  fi
+done
+
+trace $0 "Wait until we see ansible playbook finished via logs"
+# Now wait for a period of inactivity (e.g., 120 seconds)
+while true; do
+  LAST_ACTIVITY=$(grep -i "python" "$LOG_FILE" | grep -i "ansible" | tail -1)
+  LAST_TIMESTAMP=$(date -d "$(echo "$LAST_ACTIVITY" | awk '{print $1, $2, $3}')" +%s)
+  CURRENT_TIMESTAMP=$(date +%s)
+  DIFF=$((CURRENT_TIMESTAMP - LAST_TIMESTAMP))
+  if [ "$DIFF" -gt "$ANSIBLE_ACTIVITY_TIMEOUT" ]; then
+    trace $0 "No Ansible activity for ${ANSIBLE_ACTIVITY_TIMEOUT} seconds. Assuming playbook has finished."
+    break
+  fi
+  trace $0 "Last Ansible activity timestamp: ${LAST_TIMESTAMP}"  # DO NOT LOG THE ACTIVITY OR LOOKS LIKE NEW ACTIVITY
+  sleep 30  # CHECKS EVERY 30 SECONDS
+done
+
+trace-end $0
