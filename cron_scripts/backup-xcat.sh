@@ -52,10 +52,10 @@ popd
 find "$SNAPDIR" -delete
 
 # Clean old backups
-find $BACKUPPATH -type f \
+find $BACKUPDIR  -mindepth 1 -maxdepth 1 -type d \
 | sort -r \
 | tail -n +$NUM_OLD_BKUPS_TO_KEEP \
-| xargs -r rm -f
+| xargs -r rm -rf
 
 # Remove empty dirs
 find $BACKUPDIR -type d -empty -delete
