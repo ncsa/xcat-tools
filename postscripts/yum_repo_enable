@@ -1,0 +1,30 @@
+#!/bin/bash
+# ENABLE SPECIFIC YUM REPOSITORIES
+
+set -x
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "$PRG: running '$PRG' on node $NODE"
+source /xcatpost/custom/functions
+trace-begin $PRG
+
+# Check if at least one repository ID is provided
+if [ "$#" -lt 1 ]; then
+  trace $PRG "No repos were specified.  Usage: $0 <repo-id1> [repo-id2 ...]"
+  exit 1
+fi
+
+# Loop through all arguments and enable each repo
+for repo in "$@"; do
+  trace $PRG "Enabling repository: $repo"
+  sudo dnf config-manager --set-enabled "$repo"
+done
+
+logger -t xcat -p local4.info "$PRG: end of '$PRG'"
+trace-end $PRG
+
+set +x
+
+exit 0
+

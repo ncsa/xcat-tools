@@ -1,0 +1,108 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              Disable SHA-1 for SSHD (per SVCPLAN-9071)
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#TODO: this showed up with RHEL9 at some point in time, make a check for OSVER
+#      and limit only to OS and VERSION that are affected by it.
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# DEFAULT SETTINGS
+#
+
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+is_valid_os(){
+  [[ "$OSVER" =~ ^(rhels9) ]]
+}
+
+
+disable_sha1() {
+  local _target_fn _target_dir
+  _target_dir=/etc/crypto-policies/policies/modules
+  _target_label=NO-SHA1-SSHD
+  _target_fn="${_target_label}".pmod
+  mkdir -p "${_target_dir}"
+  cat <<ENDHERE >"${_target_dir}/${_target_fn}"
+# Disable SHA-1 specifically for OpenSSH
+hash@SSH = -SHA1
+sign@SSH = -RSA-PSS-SHA1 -RSA-SHA1 -ECDSA-SHA1
+mac@SSH = -HMAC-SHA1
+ENDHERE
+  /usr/bin/update-crypto-policies --set DEFAULT:"${_target_label}"
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+  Disable SHA1 for sshd on RHEL9
+Usage:
+    $PRG
+Parameters:
+    NONE
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+SLEEPVAL=$DEFAULT_SLEEPTIME
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -h)
+            usage
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            echo "Invalid option '$1'"
+            exit 1
+            ;;
+         *)
+            ENDWHILE=1
+            break
+            ;;
+    esac
+    shift
+done
+[[ $# -gt 0 ]] && {
+    SLEEPVAL="$1"
+    shift
+}
+
+#
+# DO WORK
+#
+is_valid_os && {
+  disable_sha1
+}

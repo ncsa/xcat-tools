@@ -1,0 +1,92 @@
+#!/bin/bash
+
+###
+# Description: Custom postscript for xcat.
+#              Disable irqbalance private users on RHEL9
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+#
+# PREP
+#
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+#
+# FUNCTIONS
+#
+function logr {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+is_valid_os(){
+  [[ "$OSVER" =~ ^(rhels9) ]]
+}
+
+
+irqbalance_fix() {
+  local _target_fn _target_dir
+  _target_dir=/usr/lib/systemd/system/irqbalance.service.d
+  _target_fn=10-no-private-users.conf
+  mkdir -p "${_target_dir}"
+  cat <<ENDHERE >"${_target_dir}/${_target_fn}"
+[Service]
+PrivateUsers=false
+ENDHERE
+}
+
+
+usage() {
+  cat << ENDHERE
+
+$PRG
+  Disable private users for irqbalance
+Usage:
+    $PRG
+Parameters:
+    NONE
+ENDHERE
+}
+
+
+#
+# OPTIONS
+#
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+    case $1 in
+        -h)
+            usage
+            ;;
+        --)
+            ENDWHILE=1
+            ;;
+        -*)
+            echo "Invalid option '$1'"
+            exit 1
+            ;;
+         *)
+            ENDWHILE=1
+            break
+            ;;
+    esac
+    shift
+done
+
+#
+# DO WORK
+#
+is_valid_os && {
+  irqbalance_fix
+  systemctl daemon-reload
+  systemctl restart irqbalance
+}

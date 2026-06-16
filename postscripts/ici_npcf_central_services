@@ -1,0 +1,154 @@
+#!/bin/bash
+
+###
+# Description: Configure ICI NPCF Central Services hosts
+#
+# Usage:
+#      1. updatenode <noderange> -P "ici_npcf_central_services"
+#
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+logr "running '$PRG' on node '$NODE'"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+
+# GLOBAL VALUES
+DEFAULTGATEWAY="172.24.64.1"
+DEFAULTIFACE=eno2np1
+STATICGATEWAY="172.29.19.65"
+STATICIFACE=eno1np0
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    ${PRG}
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+
+ENDHERE
+}
+
+
+# DO WORK
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+set -x
+
+ip a | egrep -w 'UP|inet'
+ip route
+nmcli connection
+
+#sed -i 's/DEFROUTE=yes/DEFROUT=no/g' /etc/sysconfig/network-scripts/ifcfg-xcat-$STATICIFACE
+#sed -i 's/DEFROUTE=yes/DEFROUT=no/g' /etc/sysconfig/network-scripts/ifcfg-$STATICIFACE
+#systemctl restart NetworkManager
+
+# ADD STATIC ROUTE FOR xCAT SERVER
+STATICCONNECTION=`nmcli --fields NAME connection | grep $STATICIFACE | head -1 | sed 's/[[:space:]]*$//'`
+nmcli connection modify "$STATICCONNECTION" +ipv4.routes "172.28.18.18/32 $STATICGATEWAY 100" && nmcli connection up "$STATICCONNECTION"
+# ADD STATIC ROUTE FOR PUPPET SERVER
+nmcli connection modify "$STATICCONNECTION" +ipv4.routes "172.28.18.9/32 $STATICGATEWAY 100" && nmcli connection up "$STATICCONNECTION"
+# PREVENT NETWORKMANAGER FROM ADDING DEFAULT ROUTES FOR MGMT INTERFACE
+nmcli connection modify "$STATICCONNECTION" ipv4.never-default yes && nmcli connection up "$STATICCONNECTION"
+
+ip a | egrep -w 'UP|inet' | grep -A1 $DEFAULTIFACE | grep -w inet || echo $DEFAULTIFACE does not have IP address assigned yet
+
+# REMOVE DEFAULT ROUTES - MULTIPLE TIMES DELETES MULTIPLE default ROUTES
+#ip route del default && ip route del default && ip route del default
+ip route del default 
+ip route del default 
+ip route del default
+
+# ADD DEFAULT ROUTE
+DEFAULTCONNECTION=`nmcli --fields NAME connection | grep $DEFAULTIFACE | head -1 | sed 's/[[:space:]]*$//'`
+nmcli connection modify "$DEFAULTCONNECTION" +ipv4.gateway $DEFAULTGATEWAY && nmcli connection up "$DEFAULTCONNECTION"
+
+ip a | egrep -w 'UP|inet'
+ip route
+
+>/etc/resolv.conf cat <<ENDHERE
+domain ncsa.illinois.edu
+search internal.ncsa.edu ncsa.illinois.edu 
+nameserver 141.142.2.2  # NCSA primary
+nameserver 141.142.230.144      # NCSA secondary
+ENDHERE
+
+# PREVENT NETWORKMANAGER FROM MANAGING DNS
+>/etc/NetworkManager/conf.d/90-dns-none.conf cat <<ENDHERE
+[main]
+dns=none
+ENDHERE
+systemctl reload NetworkManager
+
+hostname -f
+getent hosts asd-prov01
+getent hosts asd-pup01
+
+# CRON SCRIPT IS NO LONGER NEEDED
+## CREATE CRON SCRIPT TO RUN AFTER REBOOTS TO MAKE SURE MGMT DEFAULT ROUTE DOES NOT EXIST
+#mkdir -p /root/cron_scripts
+#>/root/cron_scripts/fix_routes.sh cat <<ENDHERE
+##!/bin/bash
+#
+#STATICCONNECTION=`nmcli --fields NAME connection | grep $STATICIFACE | head -1 | sed 's/[[:space:]]*$//'`                                                      
+#nmcli connection modify \$STATICCONNECTION -ipv4.routes "default 172.29.19.65"
+#nmcli connection modify \$STATICCONNECTION -ipv4.gateway $STATICGATEWAY
+#nmcli connection modify \$STATICCONNECTION ipv4.never-default yes
+#nmcli connection down \$STATICCONNECTION
+#nmcli connection up \$STATICCONNECTION
+#ip route del default via $STATICGATEWAY dev $STATICIFACE
+#ENDHERE
+#
+#chmod a+x /root/cron_scripts/fix_routes.sh
+#
+#>>/var/spool/cron/root cat <<ENDHERE
+## FIX IP ROUTES
+#@reboot sleep 5m && /root/cron_scripts/fix_routes.sh
+#ENDHERE
+
+
+set +x
+
+logger -t xcat -p local4.info "end of '$PRG' on node $NODE"
+logr "end of '$PRG' on node '$NODE'"
+
+exit 0

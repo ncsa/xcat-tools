@@ -1,0 +1,148 @@
+#!/bin/bash
+
+###
+# Description: Configure GitLab
+#
+# Usage:
+#      1. updatenode <noderange> -P "gitlab_config"
+#
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+logr "running '$PRG' on node '$NODE'"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+
+# GLOBAL VALUES
+GIT_DIR="/var/opt/gitlab/"
+GIT_USERNAME="git"
+
+declare -A drives
+drives["gitlab"]="/gitlab"
+drives["gitdata"]="/gitdata"
+drives["backup"]="/backup"
+
+declare -A bindmounts
+bindmounts["/gitlab/etc"]="/etc/gitlab"
+bindmounts["/gitlab/var/opt"]="/var/opt/gitlab"
+# WE MAY NOT BE ABLE TO BINDMOUNT UNDER OTHER BINDMOUNTED PATHS
+#bindmounts["/gitdata"]="/gitlab/var/opt/git-data"
+#bindmounts["/backup/gitlab"]="/gitlab/var/opt/backup"
+
+# ASSOCIATIVE ARRAY OF GIT USERS AND FILE/DIRECTORY THEY OWN
+declare -A gitusers
+gitusers["git"]="/gitdata/repositories/"
+gitusers["gitlab-prometheus"]="/gitlab/var/opt/prometheus/"
+gitusers["gitlab-psql"]="/gitlab/var/opt/postgresql/"
+gitusers["gitlab-redis"]="/gitlab/var/opt/redis/"
+gitusers["gitlab-www"]="/gitlab/var/opt/nginx/proxy_cache/"
+gitusers["registry"]="/gitlab/var/opt/registry/"
+
+# ASSOCIATIVE ARRAY OF GIT USERS AND THEIR SHELL
+declare -A gitusersshell
+gitusersshell["git"]="/bin/sh"
+gitusersshell["gitlab-prometheus"]="/bin/sh"
+gitusersshell["gitlab-psql"]="/bin/sh"
+gitusersshell["gitlab-redis"]="/bin/false"
+gitusersshell["gitlab-www"]="/bin/false"
+gitusersshell["registry"]="/bin/sh"
+
+# ASSOCIATIVE ARRAY OF GIT USERS AND THEIR HOME DIRECTORY
+declare -A gitusershome
+gitusershome["git"]="/var/opt/gitlab/"
+gitusershome["gitlab-prometheus"]="/var/opt/gitlab/prometheus"
+gitusershome["gitlab-psql"]="/var/opt/gitlab/postgresql"
+gitusershome["gitlab-redis"]="/var/opt/gitlab/redis"
+gitusershome["gitlab-www"]="/var/opt/gitlab/nginx"
+gitusershome["registry"]="/var/opt/gitlab/registry"
+
+# ASSOCIATIVE ARRAY OF GIT GROUP AND FILE/DIRECTORY THEY OWN
+declare -A gitgroups
+gitgroups["git"]="/gitdata/repositories/"
+gitgroups["gitlab-prometheus"]="/gitlab/var/opt/prometheus/data/"
+gitgroups["gitlab-psql"]="/gitlab/var/opt/postgresql/data/"
+gitgroups["gitlab-redis"]="/gitlab/var/opt/redis/dump.rdb"
+gitgroups["gitlab-www"]="/gitlab/var/opt/gitlab-workhorse/"
+gitgroups["registry"]="/gitlab/var/opt/registry/gitlab-registry.crt"
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    ${PRG}
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+
+ENDHERE
+}
+
+
+# DO WORK
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+
+# MOUNT DISKS BASED ON LABELS
+for label in "${!drives[@]}"; do
+  mount="${drives[$label]}"
+  mkdir -p ${mount}
+  mount -t xfs -L ${label} ${mount}
+  echo "LABEL=${label}   ${mount}             xfs    defaults     0 0" >> /etc/fstab
+done
+
+# BINDMOUNT DISKS
+for device in "${!bindmounts[@]}"; do
+  directory="${bindmounts[$device]}"
+  mkdir -p ${directory}
+  mount --bind ${device} ${directory}
+  echo "${device}    ${directory}             none    defaults,bind     0 0" >> /etc/fstab
+done
+systemctl daemon-reload
+mount -a
+
+# SETUP git USER & GROUP BASED OFF UID/GID OF MOUNTED DISKS
+# SETUP GIT GROUPS
+for group in "${!gitgroups[@]}"; do
+  directory="${gitgroups[$group]}"
+  gid=$(ls -nd ${directory} | tail -1 | awk '{ print $4 }')
+  id ${gid} && getent passwd ${gid} | awk -F\: '{ print $1 }' | xargs -I% groupdel %
+  groupadd -g ${gid} ${group}
+done
+
+# SETUP GIT USERS
+for username in "${!gitusers[@]}"; do
+  directory="${gitusers[$username]}"
+  uid=$(ls -nd ${directory} | awk '{ print $3 }')
+  id ${uid} && getent passwd ${uid} | awk -F\: '{ print $1 }' | xargs -I% userdel %
+  useradd -u ${uid} -d ${gitusershome[$username]} -s ${gitusersshell[$username]} -g ${username} -M --system ${username}
+done
+
+logger -t xcat -p local4.info "end of '$PRG' on node $NODE"
+logr "end of '$PRG' on node '$NODE'"
+
+exit 0

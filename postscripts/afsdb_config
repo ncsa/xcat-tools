@@ -1,0 +1,117 @@
+#!/bin/bash
+
+###
+# Description: Configure OpenAFS Database Server
+#
+# Usage:
+#      1. updatenode <noderange> -P "afsdb_config"
+#
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+logr "running '$PRG' on node '$NODE'"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+
+# GLOBAL VALUES
+TRANSARC_PATH="/usr/afs"
+DEFAULT_PATH="/var/openafs"
+
+declare -A drives
+drives["data"]="/data"
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    ${PRG}
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+
+ENDHERE
+}
+
+
+# DO WORK
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+
+## MOUNT DISKS BASED ON LABELS
+#for label in "${!drives[@]}"; do
+#  mount="${drives[$label]}"
+#  mkdir -p ${mount}
+#  mount -t xfs -L ${label} ${mount}
+#  echo "LABEL=${label}   ${mount}             xfs    defaults     0 0" >> /etc/fstab
+#done
+#
+## BINDMOUNT DISKS
+#mkdir -p ${TRANSARC_PATH}
+#mount --bind /data/openafs ${TRANSARC_PATH}
+#echo "/data/openafs    ${TRANSARC_PATH}    none    defaults,bind     0 0" >> /etc/fstab
+#
+#mkdir -p ${DEFAULT_PATH}
+#mount --bind /data/openafs ${DEFAULT_PATH}
+#echo "/data/openafs    ${DEFAULT_PATH}     none    defaults,bind     0 0" >> /etc/fstab
+#
+#systemctl daemon-reload
+#mount -a
+
+# SETUP OLD CUSTOM CRONS NOT IN PUPPET ON ONE OF THE AFS DB SERVERS
+if hostname -s | egrep -q "congo"
+then
+  >/var/spool/cron/root cat <<ENDHERE
+##---------------------------------------
+## AFS CRON SCRIPTS MOVED FROM acer.ncsa.illinois.edu - wglick 2021-12-17
+# AFS build afs groups
+15 1 * * * /etc/keytabs/webadmin_wrapper /afs/ncsa.uiuc.edu/projects/afs/www_scripts/ncsa_afs_groups.pl
+# AFS build reserved ids
+15 1 * * * /etc/keytabs/webadmin_wrapper /afs/ncsa.uiuc.edu/projects/afs/www_scripts/pts_res_ids.pl
+# AFS vos watch
+15 6,18 * * * /afs/ncsa/projects/afs/scripts/vol_watch 2>&1 > /dev/null
+## AFS log stats - HAS NOT WORKED SINCE 2013 :)
+#30 8 * * * /afs/ncsa/projects/afs/AFSStatDB/scripts/log_stats -t 2>&1 > /dev/null
+##---------------------------------------
+
+ENDHERE
+fi
+
+# CHANGE HOSTNAME TO OLD .ncsa.uiuc.edu DOMAIN FOR PROD DB SERVERS
+if hostname -s | egrep -q "congo|kaskaskia|nile"
+  if hostname -f | egrep -q "ncsa.illinois.edu"
+  then
+    hostnamectl set-hostname $(hostname -s).ncsa.uiuc.edu
+    hostnamectl status --static
+    hostname $(hostname -s).ncsa.uiuc.edu
+    hostname -f
+  fi
+fi
+
+logger -t xcat -p local4.info "end of '$PRG' on node $NODE"
+logr "end of '$PRG' on node '$NODE'"
+
+exit 0

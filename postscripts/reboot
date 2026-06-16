@@ -1,0 +1,89 @@
+#!/bin/bash
+
+###
+# Description: Will schedule a reboot after the yum upgrade.
+# Usage:
+#      1. updatenode <noderange> -P "reboot [OPTS]"
+#
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "running '$PRG' on node $NODE"
+
+
+# DEFAULT SETTINGS
+declare -A DEFAULTS
+#DEFAULTS[DISABLE_EXCLUDES]=all
+
+
+# GLOBAL SETTINGS
+
+
+# FUNCTIONS
+logr() {
+  logger -t xcat -p local4.info "$*"
+  echo "$*"
+}
+
+
+croak() {
+  logr "ERROR - $*"
+  echo "ERROR - $*"
+  exit 99
+}
+
+
+schedule_reboot() {
+    logr "Scheduling reboot in 2 minutes"
+    set -x
+    /sbin/shutdown -r +2 "Reboot after yum upgrade"
+    set +x
+}
+
+
+print_usage() {
+    cat <<ENDHERE
+Usage:
+    reboot [OPTIONS]
+
+OPTIONS:
+    -h | --help
+        Print usage message and exit
+ENDHERE
+}
+
+
+# DO WORK
+
+ENDWHILE=0
+while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
+  case $1 in
+    -h|--help)
+        print_usage
+        exit 0
+        ;;
+    --)
+        ENDWHILE=1
+        ;;
+    -*)
+        croak "Invalid option '$1'"
+        ;;
+     *)
+        ENDWHILE=1
+        break
+        ;;
+  esac
+  shift
+done
+
+logr "Starting scheduling shutdown reboot"
+schedule_reboot
+logr "End of scheduling shutdown reboot"
+
+logr "end of reboot on OS '$OSVER' on node '$NODE'"
+
+exit 0
+

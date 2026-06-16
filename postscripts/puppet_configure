@@ -87,7 +87,9 @@ set_server() {
 set_certname() {
     logr "enter '$FUNCNAME'..."
     if ! grep -qw certname /etc/puppetlabs/puppet/puppet.conf ; then
-        if [ ! -z $DOMAIN ]; then
+        if [ -n $PUPPETDOMAIN ]; then
+            SET_CERTNAME=$NODE.$PUPPETDOMAIN
+        elif [ -n $DOMAIN ]; then
             SET_CERTNAME=$NODE.$DOMAIN
         else
             SET_CERTNAME=$NODE.local
@@ -180,6 +182,8 @@ OPTIONS:
         Set Puppet server to HOSTNAME
     --ip <IPADDRESS>
         Create local hosts entry for IPADDRESS to point to puppet server hostname
+    --domain <DOMAIN>
+        Use this domain (for certname) instead of the one set in the xcat site table
 
 ENDHERE
 }
@@ -201,6 +205,10 @@ while [[ $# -gt 0 ]] && [[ $ENDWHILE -eq 0 ]] ; do
         PUPPETSERVERIP="$2"
         shift
         ;;
+    --domain)
+        PUPPETDOMAIN="$2"
+        shift
+        ;;
     --)
         ENDWHILE=1
         ;;
@@ -220,6 +228,7 @@ is_agent_installed || install_rpm
 is_agent_installed || croak "Failed to install puppet-agent"
 
 set_server
+
 set_certname
 
 [[ -n "$PUPPETSERVERIP" ]] && set_hosts_entry

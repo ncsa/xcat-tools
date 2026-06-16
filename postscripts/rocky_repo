@@ -1,0 +1,45 @@
+#!/bin/bash
+# FOR SOME REASON THE ROCKY 8 OS IMAGE IS MISSING REPOS
+# SO WE WILL PUT THOSE INTO PLACE
+
+set -x
+
+# PREP
+PRG=$( basename $0 )
+logger -t xcat -p local4.info "$PRG: running '$PRG' on node $NODE"
+source /xcatpost/custom/functions
+trace-begin $PRG
+
+trace $PRG "Enabling yum repos: appstream, baseos"
+dnf config-manager --set-enabled appstream baseos
+
+#if [[ "$OSVER" =~ ^(rocky8) ]]; then
+#    trace $PRG "Creating /etc/yum.repos.d/rocky.repo for Rocky 8 OS"
+#    cat <<ENDHERE > /etc/yum.repos.d/rocky.repo
+#[appstream]
+#name=Rocky Linux $releasever - AppStream
+#mirrorlist=https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=AppStream-$releasever
+##baseurl=http://dl.rockylinux.org/$contentdir/$releasever/AppStream/$basearch/os/
+#gpgcheck=1
+#enabled=1
+#countme=1
+#gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rockyofficial
+#
+#[baseos]
+#name=Rocky Linux $releasever - BaseOS
+#mirrorlist=https://mirrors.rockylinux.org/mirrorlist?arch=$basearch&repo=BaseOS-$releasever
+##baseurl=http://dl.rockylinux.org/$contentdir/$releasever/BaseOS/$basearch/os/
+#gpgcheck=1
+#enabled=1
+#countme=1
+#gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-rockyofficial
+#ENDHERE
+#fi
+
+logger -t xcat -p local4.info "$PRG: end of '$PRG'"
+trace-end $PRG
+
+set +x
+
+exit 0
+
