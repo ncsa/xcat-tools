@@ -1,0 +1,101 @@
+#!/bin/bash
+###
+# Description: Common configuration, tag decoders, and helper functions
+#              shared by xCAT Ansible postscripts.
+# Source: https://github.com/ncsa/xcat-tools
+###
+
+set -eo pipefail
+
+SOURCE_DIR="${SOURCE_DIR:-/install/ansible}"
+BASE_ANSIBLE_DIR="${BASE_ANSIBLE_DIR:-/root/ansible}"
+XCAT_POST_FUNCTIONS_PATH="${XCAT_POST_FUNCTIONS_PATH:-/xcatpost/custom/functions}"
+
+# Source xCAT postscript helper functions if available
+if [ -f "$XCAT_POST_FUNCTIONS_PATH" ]; then
+    source "$XCAT_POST_FUNCTIONS_PATH"
+elif [ -f "/xcatpost/functions" ]; then
+    source "/xcatpost/functions"
+fi
+
+PRG=$(basename "${0:-ansible}")
+logr() { logger -t xcat -p local4.info "$PRG: $*"; echo "$*"; }
+croak() { logr "ERROR - $*"; exit 99; }
+trace_msg() { if command -v trace &>/dev/null; then trace "$PRG" "$*"; else logr "$*"; fi; }
+
+# Helper: Validates that a CLI option is accompanied by a valid, non-flag argument
+require_arg() {
+    local opt="$1"
+    local val="${2:-}"
+    if [ -z "$val" ] || [[ "$val" == -* ]]; then
+        croak "Option '$opt' requires a non-empty argument."
+    fi
+}
+
+# Decodes xCAT group tags where slashes are encoded as '__' or '..'
+decode_xcat_tag() {
+    local raw_val="$1" base_dir="$2" decoded=""
+    
+    if [[ "$raw_val" == *"__"* ]]; then
+        decoded="${raw_val//__//}"
+    elif [[ "$raw_val" == *".."* ]]; then
+        decoded="${raw_val//..//}"
+    else
+        if [ -n "$base_dir" ] && { [ -f "${base_dir}/${raw_val}" ] || [ -d "${base_dir}/${raw_val}" ]; }; then
+            decoded="$raw_val"
+        else
+            local ext=""
+            if [[ "$raw_val" == *.* ]]; then
+                ext=".${raw_val##*.}"
+                raw_val="${raw_val%.*}"
+            fi
+            decoded="$(echo "$raw_val" | tr '.' '/')${ext}"
+        fi
+    fi
+    echo "$decoded"
+}
+
+# Configuration Resolver (Order of precedence: CLI Flag -> xCAT Group Tag -> Site Table -> Default)
+resolve_config() {
+    local cli_val="$1" tag_prefix="$2" default_val="$3"; shift 3
+    local site_vars=("$@")
+
+    if [ -n "$cli_val" ]; then echo "$cli_val"; return; fi
+    if [[ $GROUP == *"${tag_prefix}_"* ]]; then
+        local raw_tag; raw_tag=$(echo "$GROUP" | grep -o "${tag_prefix}_[^,]*" | cut -d'_' -f2-)
+        decode_xcat_tag "$raw_tag" "${SOURCE_DIR}"
+        return
+    fi
+    for svar in "${site_vars[@]}"; do
+        if [ -n "${!svar:-}" ]; then echo "${!svar}"; return; fi
+    done
+    echo "$default_val"
+}
+
+# Resolves and validates ANSIBLE_PROJECT
+resolve_ansible_project() {
+    local cli_project="$1"
+    local project
+    project=$(resolve_config "$cli_project" "ANSPROJ" "" "ANSIBLE_PROJECT" "ANSIBLEPROJECT")
+    [ -z "$project" ] && croak "Could not determine ANSIBLE_PROJECT."
+
+    if [[ ! "$project" =~ ^[A-Za-z0-9._-]+$ ]]; then
+        croak "Invalid Ansible project name: $project"
+    fi
+    echo "$project"
+}
+
+# Unified Vault Password Path Resolver
+# Destination Contract: ${BASE_ANSIBLE_DIR}/${VAULT_FILE_NAME}
+resolve_vault_path() {
+    local cli_vault_pass="$1"
+    local project_name="$2"
+
+    local raw_vault_config
+    raw_vault_config=$(resolve_config "$cli_vault_pass" "ANSVAULT" "${project_name}-vault-password" "ANSIBLE_VAULT_PASSWORD_FILE" "ANSIBLEVAULTFILE")
+
+    local vault_file_name
+    vault_file_name=$(basename "$raw_vault_config")
+    echo "${BASE_ANSIBLE_DIR}/${vault_file_name}"
+}
+
