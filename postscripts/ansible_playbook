@@ -1,190 +1,366 @@
 #!/bin/bash
-
 ###
-# Description: Run ansible-playbook against the locally synced ansible repo and vault password
-# 
-# This script does the following:
-# 1. Install ansible and prerequisites.
-# 2. Determine which Ansible groups match up with node's xCAT groups.
-# 3. Update Ansible local inventory file to set the Ansible group from xCAT group
-# 4. Determine which Ansible project repo to use.
-# 5. Determine and checkout which branch of the Ansible project repo to use.
-# 6. Run ansible-playbook on the deployed node, logging output to:
-#      /root/xcat_ansible_playbook_output.txt
-#
-# See: https://wiki.ncsa.illinois.edu/display/ICI/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnxCATServer
-# 
+# Description: Run ansible-playbook locally against a synced repository during xCAT node provisioning.
 # Source: https://github.com/ncsa/xcat-tools
+#
+# Usage:
+#   ansible_playbook.sh [OPTIONS]
+#
+# Key Workflow:
+# 1. Checks sentinel file to prevent duplicate execution.
+# 2. Resolves Python & Ansible dependencies (creates an ephemeral venv if needed).
+# 3. Decodes xCAT group tags, site table options, or CLI flags to determine inventory,
+#    playbook, branch, limit pattern, and vault credentials.
+# 4. Fetches Ansible Galaxy roles/collections if requirements.yml is present.
+# 5. Executes ansible-playbook locally and logs output to /root/xcat_ansible_playbook_output.txt.
+# 6. Cleans up temporary venv, vault password, and base git repository upon successful execution.
 ###
 
-set -x
-# Set to 0 : Exit code of the playbook run does not influence the exit code of this postscript
-# Set to 1 : This postscript will exit with the same exit code as the playbook
+set -eo pipefail
+
+# -----------------------------------------------------------------------------
+# Configuration Defaults & Environment Settings
+# -----------------------------------------------------------------------------
+# 1. ENABLE_SENTINEL / SENTINEL_FILE:
+#    Set to 1 to write a sentinel file upon successful completion and skip future re-runs.
+ENABLE_SENTINEL=1
+SENTINEL_FILE="/var/log/xcat_ansible_playbook.done"
+
+# 2. IGNORE_PLAYBOOK_EXIT_CODE:
+#    - 1: Script exits with ansible-playbook's return code. xCAT provisioning fails if playbook fails.
+#    - 0: Script always returns 0 to xCAT (ignores playbook task failures).
 IGNORE_PLAYBOOK_EXIT_CODE=1
 
-EPEL_PKG_NAME="epel-release"
-EPEL_PKG_URL="https://dl.fedoraproject.org/pub/epel/epel-release-latest-`awk -F'release ' '{print $2}' /etc/redhat-release | cut -d'.' -f1`.noarch.rpm"
+# 3. Paths & Repositories:
+XCAT_POST_FUNCTIONS_PATH="/xcatpost/custom/functions"
+BASE_ANSIBLE_DIR="/root/ansible"
+DEFAULT_BRANCH="production"
+DEFAULT_PLAYBOOK="playbooks/site.yml"
+VENV_DIR="/tmp/xcat_ansible_playbook_venv"
 
-HOSTNAME=`hostname -s`
-logger -t xcat "$0: running $0 on `hostname`"
-source /xcatpost/custom/functions
+# 4. Galaxy Configuration:
+SKIP_GALAXY=0
+GALAXY_FORCE=1
+# Default set to 1 (Skip/Ignore SSL certificate validation)
+GALAXY_IGNORE_CERTS=${GALAXY_IGNORE_CERTS:-1}
+GALAXY_HTTP_PROXY="http://httpproxy.ncsa.illinois.edu:3128"
+GALAXY_HTTPS_PROXY="http://httpproxy.ncsa.illinois.edu:3128"
 
-# FUNCTIONS
+# Tracking flag for ephemeral virtual environment installation
+ANSIBLE_INSTALLED_BY_SCRIPT=0
 
-logr() {
-  logger -t xcat -p local4.info "$*"
-  echo "$*"
-}
-
-
-croak() {
-  logr "ERROR - $*"
-  echo "ERROR - $*"
-  exit 99
-}
-
-is_ansible_installed() {
-    logr "is ansible installed"
-    dnf list installed ansible > /dev/null 2>&1
-    local _rc=$?
-    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
-    return $_rc
-}
-
-is_ansible_available() {
-    logr "is ansible available"
-    dnf list available ansible > /dev/null 2>&1 
-    local _rc=$?
-    [[ $_rc -eq 0 ]] && logr '...yes' || logr '...NO'
-    return $_rc
-}
-
-trace-begin $0
-
-trace $0 "Installing dependency packages: ansible, git"
-# IF ansible NOT INSTALLED, INSTALL IT
-is_ansible_installed || ( is_ansible_available && dnf install -y ansible )
-# IF ansible NOT AVAILABLE FROM DEFAULT REPOS TEMPORARILY INSTALL EPEL IN ORDER TO INSTALL ANSIBLE
-is_ansible_installed || ( dnf install -y ${EPEL_PKG_URL} && TEMP_EPEL_INSTALL=1 && dnf install -y ansible )
-is_ansible_installed || croak "Cannot install ansible"
-
-# IF git NOT INSTALLED, INSTALL IT
-dnf list installed git || ( dnf install -y git && TEMP_GIT_INSTALL=1 )
-# IF epel WAS INSTALLED HERE REMOVE IT NOW THAT THE PACKAGES WERE INSTALLED
-if [ "${TEMP_EPEL_INSTALL:-0}" -eq 1 ]; then
-    dnf remove -y "$EPEL_PKG_NAME"
-    trace $0 "Removed EPEL that was temporarily installed in order to install ansible"
-fi
-trace $0 "Finished installing dependency packages: ansible, git"
-
-# GET NODE'S groups FROM xCAT FILTERING OUT ANY ANS* GROUPS
-GROUPJSON=$(echo "$GROUP" | tr ',' '\n' | grep -v '^ANS' | tr '\n' ',' | sed 's/,$//' | sed "s/,/','/g" | sed "s/^/['/" | sed "s/$/']/")
-trace $0 "$HOSTNAME belongs to groups: $GROUPJSON"
-
-# FIGURE OUT WHAT ANSIBLE PROJECT TO USE
-# DEFAULT PROJECT SHOULD BE SET IN SITE TABLE
-# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE
-if [[ $GROUP == *"ANSPROJ_"* ]]; then
-    ANSIBLE_PROJECT=$(echo "$GROUP" | grep -o 'ANSPROJ_[^,]*' | cut -d'_' -f2)
-    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from group ANSPROJ_*"
-elif [[ -n $ANSIBLEPROJECT ]]; then
-    ANSIBLE_PROJECT=$ANSIBLEPROJECT
-    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from xCAT site table"
-else
-    ANSIBLE_PROJECT="control-ansible"
-    trace $0 "Using ansible project: $ANSIBLE_PROJECT set from default in postscript"
+# -----------------------------------------------------------------------------
+# Sentinel & Helper Functions
+# -----------------------------------------------------------------------------
+if [ "$ENABLE_SENTINEL" -eq 1 ] && [ -f "$SENTINEL_FILE" ]; then
+    echo "Ansible playbook has already executed on this node ($SENTINEL_FILE exists). Skipping."
+    exit 0
 fi
 
-ANSIBLEPATH="/root/ansible/${ANSIBLE_PROJECT}"
-trace $0 "Using path: $ANSIBLEPATH"
-PASSWORD="${ANSIBLEPATH}-vault-password"
-trace $0 "Using password file: $PASSWORD"
-chmod 0400 $PASSWORD
-
-# FIGURE OUT WHAT ANSIBLE PROJECT GIT BRANCH TO USE
-# DEFAULT BRANCH SHOULD BE SET IN SITE TABLE
-# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE - SWAP '/' WITH '.' IN xCAT
-if [[ $GROUP == *"ANSBRANCH_"* ]]; then
-    ANSIBLE_BRANCH=$(echo "$GROUP" | grep -o 'ANSBRANCH_[^,]*' | cut -d'_' -f2  | tr '.' '/')
-    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from group ANSBRANCH_*"
-elif [[ -n $ANSIBLEPROJECTBRANCH ]]; then
-    ANSIBLE_BRANCH=$(echo $ANSIBLEPROJECTBRANCH | tr '.' '/')
-    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from xCAT site table"
-else
-    ANSIBLE_BRANCH="main"
-    trace $0 "Using ansible branch: $ANSIBLE_BRANCH set from default in postscript"
-fi
-trace $0 "Checking out $ANSIBLE_PROJECT branch $ANSIBLE_BRANCH"
-cd $ANSIBLEPATH && git checkout ${ANSIBLE_BRANCH} 
-
-# IF git WAS INSTALLED HERE REMOVE IT NOW THAT THE PACKAGES WERE INSTALLED
-if [ "${TEMP_GIT_INSTALL:-0}" -eq 1 ]; then
-    dnf remove -y git
-    trace $0 "Removed git that was temporarily installed to support ansible"
+# Source xCAT postscript helper functions if available
+if [ -f "$XCAT_POST_FUNCTIONS_PATH" ]; then
+    source "$XCAT_POST_FUNCTIONS_PATH"
+elif [ -f "/xcatpost/functions" ]; then
+    source "/xcatpost/functions"
 fi
 
-# wglick - 2025-03-25
-# IS THE FOLLOWING REALLY THE BEST LOGIC FOR SETTING ANSIBLE CHILDREN/GROUPS?
-# - DO WE WANT TO LOOK AT ANSIBLE GROUPS ONLY FROM inventory/group_vars/?
-#   - WHAT IF WE HAVE A VALID ANSIBLE GROUP WITHOUT UNIQUE group_var DATA?
-# - AND/OR DO WE WANT TO LOOK IN inventory/*.yml
-#   - THIS WOULD LET US SET BY hostname INSTEAD OF XCAT GROUP
+logr() { logger -t xcat -p local4.info "$*"; echo "$*"; }
+croak() { logr "ERROR - $*"; exit 99; }
+trace_msg() { if command -v trace &>/dev/null; then trace "$0" "$*"; else logr "$*"; fi; }
 
-# CUSTOMIZE inventory/local.yml TO HAVE CHILDREN THAT MATCH HOSTS GROUPS
-# Directory containing the .yml files
-directory="$ANSIBLEPATH/inventory/group_vars/"
-# Array to store the basenames of .yml files
-yml_files=()
-# Loop through the .yml files in the directory
-for file in "$directory"*.yml; do
-  # Exclude 'all.yml'
-  if [[ $(basename "$file") != "all.yml" ]]; then
-    # Get the basename without the .yml extension and add it to the array
-    yml_files+=("$(basename "$file" .yml)")
-  fi
-done
-trace $0 "Ansible inventory has these group_vars: ${yml_files[@]}"
-# Convert GROUP variable to an array
-IFS=',' read -r -a group_array <<< "$GROUP"
-trace $0 "$HOSTNAME belongs to xcat groups: ${group_array[@]}"
-# Find the intersection of group_array and yml_files
-CHILDREN=()
-for group in "${group_array[@]}"; do
-  for yml in "${yml_files[@]}"; do
-    if [[ "$group" == "$yml" ]]; then
-      CHILDREN+=("$group")
+# Decodes xCAT group tags where slashes are encoded as '__' or '..'
+decode_xcat_tag() {
+    local raw_val="$1" decoded=""
+    
+    if [[ "$raw_val" == *"__"* ]]; then
+        decoded="${raw_val//__//}"
+    elif [[ "$raw_val" == *".."* ]]; then
+        decoded="${raw_val//..//}"
+    else
+        # Preserve extension before converting single dots to slashes
+        local ext=""
+        if [[ "$raw_val" == *.* ]]; then
+            ext=".${raw_val##*.}"
+            raw_val="${raw_val%.*}"
+        fi
+        decoded="$(echo "$raw_val" | tr '.' '/')${ext}"
     fi
-  done
-done
-trace $0 "$HOSTNAME belongs to ansible groups: ${CHILDREN[@]}"
-echo "  children:" >> $ANSIBLEPATH/inventory/local.yml
-# Loop over each CHILDREN element to echo some content
-for child in "${CHILDREN[@]}"; do
-  trace $0 "Processing $child"
-  echo "    $child:" >> $ANSIBLEPATH/inventory/local.yml
-  echo "      hosts:" >> $ANSIBLEPATH/inventory/local.yml
-  echo "        local:" >> $ANSIBLEPATH/inventory/local.yml
+    echo "$decoded"
+}
+
+PLAYBOOK_EXECUTED=0
+
+# Unified Cleanup Trap (Runs on exit)
+cleanup() {
+    local rc=$1
+
+    if [ "$PLAYBOOK_EXECUTED" -ne 1 ]; then
+        return 0
+    fi
+
+    local status="${ANSIBLE_PLAYBOOK_EXIT_CODE:-$rc}"
+
+    if [ "$status" -ne 0 ]; then
+        trace_msg "Playbook run failed (status: $status). Retaining repository, venv, and logs for debugging."
+        return 0
+    fi
+
+    trace_msg "Playbook execution succeeded. Running cleanup tasks..."
+
+    # 1. Remove vault password file
+    [ -n "${PASSWORD:-}" ] && [ -f "$PASSWORD" ] && rm -f "$PASSWORD"
+
+    # 2. Remove base Ansible repository directory (with safety checks)
+    if [ -n "${BASE_ANSIBLE_DIR:-}" ] && [ -d "$BASE_ANSIBLE_DIR" ]; then
+        if [ "$BASE_ANSIBLE_DIR" != "/" ] && [ "$BASE_ANSIBLE_DIR" != "/root" ]; then
+            trace_msg "Removing Ansible project directory ($BASE_ANSIBLE_DIR)..."
+            rm -rf "$BASE_ANSIBLE_DIR"
+        fi
+    fi
+
+    # 3. Create sentinel marker file
+    [ "${ENABLE_SENTINEL:-0}" -eq 1 ] && touch "$SENTINEL_FILE"
+
+    # 4. Remove ephemeral virtual environment and cache
+    if [ "${ANSIBLE_INSTALLED_BY_SCRIPT:-0}" -eq 1 ] && [ -d "$VENV_DIR" ]; then
+        trace_msg "Removing temporary virtual environment ($VENV_DIR)..."
+        rm -rf "$VENV_DIR"
+        rm -rf /root/.ansible
+    fi
+}
+trap 'cleanup $?' EXIT
+
+# Configuration Resolver (Order of precedence: CLI Flag -> xCAT Group Tag -> Site Table -> Default)
+resolve_config() {
+    local cli_val="$1" tag_prefix="$2" default_val="$3"; shift 3
+    local site_vars=("$@")
+
+    if [ -n "$cli_val" ]; then echo "$cli_val"; return; fi
+    if [[ $GROUP == *"${tag_prefix}_"* ]]; then
+        local raw_tag; raw_tag=$(echo "$GROUP" | grep -o "${tag_prefix}_[^,]*" | cut -d'_' -f2-)
+        decode_xcat_tag "$raw_tag" "${ANSIBLEPATH:-}"
+        return
+    fi
+    for svar in "${site_vars[@]}"; do
+        if [ -n "${!svar:-}" ]; then echo "${!svar}"; return; fi
+    done
+    echo "$default_val"
+}
+
+show_help() {
+    cat << 'EOF'
+Usage: ansible_playbook.sh [OPTIONS]
+
+Options:
+  -i, --inventory FILE             Path to inventory file
+  -p, --project NAME               Ansible project directory name
+  -b, --branch BRANCH              Git branch to check out (default: production)
+  -m, --playbook FILE              Playbook path (default: playbooks/site.yml)
+  -l, --limit TARGETS              Ansible limit host pattern
+  -v, --vault-password-file FILE   Vault password file path
+      --skip-galaxy                 Skip ansible-galaxy requirements installation
+      --galaxy-disable-force        Skip forcing re-download of galaxy requirements
+      --galaxy-ignore-certs         Skip SSL cert validation during galaxy installs (default)
+      --galaxy-strict-certs         Enforce strict SSL cert validation for galaxy installs
+  -h, --help                       Show this help message
+EOF
+    exit 0
+}
+
+# -----------------------------------------------------------------------------
+# CLI Argument Parsing
+# -----------------------------------------------------------------------------
+CLI_INVENTORY="" CLI_PROJECT="" CLI_BRANCH="" CLI_PLAYBOOK="" CLI_LIMIT="" CLI_VAULT_PASS=""
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)               show_help ;;
+        -i|--inventory)          CLI_INVENTORY="$2"; shift 2 ;;
+        -p|--project)            CLI_PROJECT="$2"; shift 2 ;;
+        -b|--branch)             CLI_BRANCH="$2"; shift 2 ;;
+        -m|--playbook)           CLI_PLAYBOOK="$2"; shift 2 ;;
+        -l|--limit)              CLI_LIMIT="$2"; shift 2 ;;
+        -v|--vault-password-file) CLI_VAULT_PASS="$2"; shift 2 ;;
+        --skip-galaxy)           SKIP_GALAXY=1; shift ;;
+        --galaxy-skip-force)     GALAXY_FORCE=0; shift ;;
+        --galaxy-ignore-certs)   GALAXY_IGNORE_CERTS=1; shift ;;
+        --galaxy-strict-certs)   GALAXY_IGNORE_CERTS=0; shift ;;
+        *) croak "Unknown option: $1" ;;
+    esac
 done
 
-ANSIBLECOMMAND="ansible-playbook -i inventory/local.yml playbooks/site.yml --vault-password-file $PASSWORD "
-trace $0 "Running ansible-playbook as follows:"
-trace $0 "  $ANSIBLECOMMAND | "
-cd $ANSIBLEPATH
-$ANSIBLECOMMAND &> /root/xcat_ansible_playbook_output.txt
-ANSIBLE_PLAYBOOK_EXIT_CODE=$?
-if [[ $ANSIBLE_PLAYBOOK_EXIT_CODE -eq 0 ]]; then
-  trace $0 "Finished running ansible-playbook - Run was successful"
-else
-  trace $0 "Finished running ansible-playbook - Playbook exited non-zero: $ANSIBLE_PLAYBOOK_EXIT_CODE"
+HOSTNAME=$(hostname -s 2>/dev/null || echo "")
+FULL_HOSTNAME=$(hostname -f 2>/dev/null || echo "")
+
+# -----------------------------------------------------------------------------
+# 1. Dependency Resolution & Ephemeral Venv
+# -----------------------------------------------------------------------------
+ensure_dependencies() {
+    export PATH="/usr/local/bin:$PATH"
+
+    # Early exit if system git and ansible-core (>= 2.15) exist
+    if command -v git &>/dev/null && command -v ansible-playbook &>/dev/null; then
+        if ansible-inventory --help 2>&1 | grep -q -- '--limit'; then
+            trace_msg "Required dependencies (git, ansible-core with --limit support) are present on host."
+            return 0
+        fi
+    fi
+
+    local pkg_mgr=""
+    command -v dnf &>/dev/null && pkg_mgr="dnf" || command -v yum &>/dev/null && pkg_mgr="yum" || pkg_mgr="apt-get"
+
+    trace_msg "Installing system prerequisites (git, python3-pip)..."
+    if [ "$pkg_mgr" = "apt-get" ]; then
+        apt-get update -y && apt-get install -y git python3-pip python3-dev python3-venv
+    else
+        $pkg_mgr install -y git python3 python3-pip python3-devel || true
+    fi
+
+    command -v git &>/dev/null || croak "Missing required OS dependency: git"
+
+    # Create temporary virtual environment with secure umask
+    trace_msg "Creating temporary Python virtual environment at $VENV_DIR..."
+    (
+        umask 077
+        rm -rf "$VENV_DIR"
+        python3 -m venv "$VENV_DIR"
+    ) || croak "Failed to create virtual environment at $VENV_DIR"
+
+    # Prepend virtualenv binaries to PATH so ansible-playbook/ansible-galaxy are used automatically
+    export PATH="$VENV_DIR/bin:$PATH"
+
+    trace_msg "Installing Ansible packages inside virtual environment..."
+    "$VENV_DIR/bin/pip" install --upgrade --no-cache-dir \
+        "ansible-core>=2.15.0,<2.17.0" \
+        "ansible>=8.0.0,<10.0.0" && ANSIBLE_INSTALLED_BY_SCRIPT=1
+
+    command -v ansible-playbook &>/dev/null || croak "ansible-playbook binary missing in virtual environment"
+}
+
+ensure_dependencies
+
+# -----------------------------------------------------------------------------
+# 2. Configuration & Git Branch Resolution
+# -----------------------------------------------------------------------------
+ANSIBLE_PROJECT=$(resolve_config "$CLI_PROJECT" "ANSPROJ" "" "ANSIBLE_PROJECT" "ANSIBLEPROJECT")
+[ -z "$ANSIBLE_PROJECT" ] && croak "Could not determine ANSIBLE_PROJECT."
+
+# Validate ANSIBLE_PROJECT does not contain path traversals
+if [[ ! "$ANSIBLE_PROJECT" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    croak "Invalid Ansible project name: $ANSIBLE_PROJECT"
 fi
 
-#trace $0 "Cleanup ansible stuff"
-# WE COULD OPTIONALLY...
-#   REMOVE ansible PACKAGE
-#   REMOVE /root/ansible
+ANSIBLEPATH="${BASE_ANSIBLE_DIR}/${ANSIBLE_PROJECT}"
+[ ! -d "${ANSIBLEPATH}/.git" ] && croak "Git repository not found at ${ANSIBLEPATH}/.git"
 
-trace-end $0
+PASSWORD=$(resolve_config "$CLI_VAULT_PASS" "ANSVAULT" "${ANSIBLEPATH}-vault-password" "ANSIBLE_VAULT_PASSWORD_FILE" "ANSIBLEVAULTFILE")
+[ -f "$PASSWORD" ] && chmod 0400 "$PASSWORD"
 
-if [[ $IGNORE_PLAYBOOK_EXIT_CODE -eq 1 ]]; then
-  exit $ANSIBLE_PLAYBOOK_EXIT_CODE
+ANSIBLE_BRANCH=$(resolve_config "$CLI_BRANCH" "ANSBRANCH" "$DEFAULT_BRANCH" "ANSIBLE_BRANCH" "ANSIBLEPROJECTBRANCH")
+
+trace_msg "Checking out Git branch '${ANSIBLE_BRANCH}' in ${ANSIBLEPATH}..."
+cd "${ANSIBLEPATH}"
+git checkout -f "${ANSIBLE_BRANCH}" || git checkout -f -B "${ANSIBLE_BRANCH}" "origin/${ANSIBLE_BRANCH}" || croak "Git checkout failed."
+
+ANSIBLE_INVENTORY=$(resolve_config "$CLI_INVENTORY" "ANSINV" "" "ANSIBLE_INVENTORY" "ANSIBLEINVENTORY" "ANSIBLEPROJECTINVENTORY")
+[ -z "$ANSIBLE_INVENTORY" ] && croak "Could not determine ANSIBLE_INVENTORY."
+
+PLAYBOOK_FILE=$(resolve_config "$CLI_PLAYBOOK" "ANSPLAYBOOK" "$DEFAULT_PLAYBOOK" "ANSIBLE_PLAYBOOK" "ANSIBLEPLAYBOOK")
+
+DEFAULT_LIMIT="localhost,127.0.0.1"
+[ -n "${NODE:-}" ]          && DEFAULT_LIMIT="${DEFAULT_LIMIT},${NODE}"
+[ -n "$HOSTNAME" ]      && DEFAULT_LIMIT="${DEFAULT_LIMIT},${HOSTNAME},${HOSTNAME}.*"
+[ -n "$FULL_HOSTNAME" ] && DEFAULT_LIMIT="${DEFAULT_LIMIT},${FULL_HOSTNAME}"
+
+LIMIT_TARGETS=$(resolve_config "$CLI_LIMIT" "ANSLIMIT" "$DEFAULT_LIMIT" "ANSIBLE_LIMIT")
+
+# -----------------------------------------------------------------------------
+# 3. Ansible Galaxy Requirements Resolution
+# -----------------------------------------------------------------------------
+install_galaxy_requirements() {
+    [ "$SKIP_GALAXY" -eq 1 ] && return 0
+    command -v ansible-galaxy &>/dev/null || return 0
+
+    local req_files=(
+        "${ANSIBLEPATH}/requirements.yml"
+        "${ANSIBLEPATH}/requirements.yaml"
+        "${ANSIBLEPATH}/collections/requirements.yml"
+        "${ANSIBLEPATH}/roles/requirements.yml"
+    )
+
+    for req_file in "${req_files[@]}"; do
+        if [ -f "$req_file" ]; then
+            trace_msg "Installing Ansible Galaxy requirements from ${req_file}..."
+            
+            if [ -n "$GALAXY_HTTP_PROXY" ]; then
+                export http_proxy="$GALAXY_HTTP_PROXY" HTTP_PROXY="$GALAXY_HTTP_PROXY"
+                export https_proxy="${GALAXY_HTTPS_PROXY:-$GALAXY_HTTP_PROXY}" HTTPS_PROXY="${GALAXY_HTTPS_PROXY:-$GALAXY_HTTP_PROXY}"
+            fi
+
+            local galaxy_opts=()
+            [ "$GALAXY_FORCE" -eq 1 ] && galaxy_opts+=("--force")
+
+            # Apply SSL bypass options if enabled (default = 1)
+            if [ "$GALAXY_IGNORE_CERTS" -eq 1 ]; then
+                galaxy_opts+=("--ignore-certs")
+                export ANSIBLE_GALAXY_SERVER_GALAXY_IGNORE_CERTS=True
+            fi
+
+            if ! ansible-galaxy install -r "$req_file" "${galaxy_opts[@]}"; then
+                croak "Failed to install Galaxy requirements from $req_file"
+            fi
+
+            unset http_proxy HTTP_PROXY https_proxy HTTPS_PROXY ANSIBLE_GALAXY_SERVER_GALAXY_IGNORE_CERTS
+        fi
+    done
+}
+
+install_galaxy_requirements
+
+# -----------------------------------------------------------------------------
+# 4. Execution & Logging
+# -----------------------------------------------------------------------------
+[ -d "${ANSIBLEPATH}/collections" ] && export ANSIBLE_COLLECTIONS_PATH="${ANSIBLEPATH}/collections:${HOME}/.ansible/collections"
+[ -d "${ANSIBLEPATH}/roles" ]       && export ANSIBLE_ROLES_PATH="${ANSIBLEPATH}/roles:${HOME}/.ansible/roles"
+
+if [ -n "$PASSWORD" ] && [ ! -f "$PASSWORD" ]; then
+    croak "Configured vault password file does not exist: $PASSWORD"
+fi
+
+[ -e "$ANSIBLE_INVENTORY" ] ||
+    croak "Inventory does not exist: $ANSIBLE_INVENTORY"
+[ -f "$PLAYBOOK_FILE" ] ||
+    croak "Playbook does not exist: $PLAYBOOK_FILE"
+
+VAULT_ARG=""
+[ -f "$PASSWORD" ] && VAULT_ARG="--vault-password-file ${PASSWORD}"
+
+ANSIBLE_COMMAND=(
+    ansible-playbook
+    -i "$ANSIBLE_INVENTORY"
+    "$PLAYBOOK_FILE"
+    --connection=local
+    --limit "$LIMIT_TARGETS"
+)
+if [ -f "$PASSWORD" ]; then
+    ANSIBLE_COMMAND+=("--vault-password-file" "$PASSWORD")
+fi
+
+LOG_FILE="/root/xcat_ansible_playbook_output.txt"
+
+trace_msg "Executing: $(printf '%q ' "${ANSIBLE_COMMAND[@]}")"
+
+trace_msg "Executing: $ANSIBLECOMMAND"
+
+# Execute playbook and capture exit status across pipe
+PLAYBOOK_EXECUTED=1
+set +e
+"${ANSIBLE_COMMAND[@]}" 2>&1 | tee -a "$LOG_FILE"
+ANSIBLE_PLAYBOOK_EXIT_CODE=${PIPESTATUS[0]}
+set -e
+
+if [ "$IGNORE_PLAYBOOK_EXIT_CODE" -eq 1 ]; then
+    exit "$ANSIBLE_PLAYBOOK_EXIT_CODE"
+else
+    exit 0
 fi
