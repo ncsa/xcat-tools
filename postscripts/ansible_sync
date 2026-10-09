@@ -1,66 +1,118 @@
 #!/bin/bash
-
 ###
-# Description: Sync ansible repo and vault password from xCAT server to deployed node
-#
-# Syncs ansible project repo and ansible vault password from /install/ansible on xCAT
-# to /root/ansible on the deployed node.  This allows postscript custom/ansible_playbook
-# to use the local ansible files synced to the server to run ansible playbook using
-# those files during the initial xCAT deployment postscript process.
-#
-# See: https://wiki.ncsa.illinois.edu/display/ICI/Create+a+new+Ansible+Project#CreateanewAnsibleProject-OnxCATServer
-# 
+# Description: Sync Ansible project repository and vault password file from 
+#              xCAT server (/install/ansible) to local node (/root/ansible).
 # Source: https://github.com/ncsa/xcat-tools
+#
+# Usage:
+#   ansible_sync [OPTIONS]
+#
+# Key Workflow:
+# 1. Mounts /install if not currently mounted on host.
+# 2. Decodes xCAT group tags, site table options, or CLI flags to determine
+#    the target Ansible project and vault password file.
+# 3. Copies the Ansible project repo from /install/ansible to /root/ansible/.
+# 4. Securely copies and restricts permissions (0400) on vault password file.
 ###
 
-set -x
+set -eo pipefail
 
-SOURCE_DIR="/install/ansible"
-TARGET_DIR="/root/ansible"
-
-# PREP
-PRG=$( basename $0 )
-logger -t xcat -p local4.info "$PRG: running '$PRG' on node $NODE"
-source /xcatpost/custom/functions
-trace-begin $PRG
-
-logger -t xcat -p local4.info "$PRG: /install mount: $(df -hP /install | grep install)"
-mount | grep "$MASTER:$INSTALLDIR on /install" && logger -t xcat -p local4.info "$PRG: $MASTER:$INSTALLDIR is already mounted"
-mount | grep "$MASTER:$INSTALLDIR on /install" || /xcatpost/mountinstall
-
-# FIGURE OUT WHAT ANSIBLE PROJECT TO USE
-# DEFAULT PROJECT SHOULD BE SET IN SITE TABLE
-# CAN BE OVERRIDDEN BY NODE GROUP VARIABLE
-if [[ $GROUP == *"ANSPROJ_"* ]]; then
-    ANSIBLE_PROJECT=$(echo "$GROUP" | grep -o 'ANSPROJ_[^,]*' | cut -d'_' -f2)
-    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from group ANSPROJ_*"
-elif [[ -n $ANSIBLEPROJECT ]]; then
-    ANSIBLE_PROJECT=$ANSIBLEPROJECT
-    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from xCAT site table"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+if [ -f "${SCRIPT_DIR}/ansible_common" ]; then
+    source "${SCRIPT_DIR}/ansible_common"
+elif [ -f "/xcatpost/ansible_common" ]; then
+    source "/xcatpost/ansible_common"
+elif [ -f "/xcatpost/custom/ansible_common" ]; then
+    source "/xcatpost/custom/ansible_common"
 else
-    ANSIBLE_PROJECT="control-ansible"
-    trace $PRG "Using ansible project: $ANSIBLE_PROJECT set from default in postscript"
+    echo "ERROR: Cannot locate ansible_common helper file." >&2
+    exit 99
 fi
 
-PASSWORD="${ANSIBLE_PROJECT}-vault-password"
+TARGET_DIR="${BASE_ANSIBLE_DIR}"
 
-#mkdir -p ${TARGET_DIR}/${ANSIBLE_PROJECT}
-mkdir -p ${TARGET_DIR}/
+show_help() {
+    cat << 'EOF'
+Usage: ansible_sync [OPTIONS]
 
-cp -apr ${SOURCE_DIR}/${ANSIBLE_PROJECT} ${TARGET_DIR}/ \
-  && trace $PRG "Copied ${SOURCE_DIR}/${ANSIBLE_PROJECT} to ${TARGET_DIR}/" \
-  || trace $PRG "Failed to copy ${SOURCE_DIR}/${ANSIBLE_PROJECT} to ${TARGET_DIR}/"
-# USING rsync SOMEHOW BREAKS THINGS NETWORKING AFTER THE HOST REBOOTS
-#rsync -av ${SOURCE_DIR}/${ANSIBLE_PROJECT} ${TARGET_DIR}/
+Options:
+  -p, --project NAME               Ansible project directory name
+  -v, --vault-password-file FILE   Vault password file name or path
+  -h, --help                       Show this help message
 
-cp -apr ${SOURCE_DIR}/${PASSWORD} ${TARGET_DIR}/ \
-  && trace $PRG "Copied ${SOURCE_DIR}/${PASSWORD} to ${TARGET_DIR}/" \
-  || trace $PRG "Failed to copy  ${SOURCE_DIR}/${PASSWORD} to ${TARGET_DIR}/"
-chmod 0400 ${TARGET_DIR}/${PASSWORD}
+Precedence Order:
+  1. CLI Flags (-p / -v)
+  2. xCAT Group Tags (ANSPROJ_* / ANSVAULT_*)
+  3. Site Table Variables (ANSIBLE_PROJECT / ANSIBLE_VAULT_PASSWORD_FILE)
+  4. Script Defaults
+EOF
+    exit 0
+}
 
-logger -t xcat -p local4.info "$PRG: end of '$PRG'"
-trace-end $PRG
+# -----------------------------------------------------------------------------
+# CLI Argument Parsing
+# -----------------------------------------------------------------------------
+CLI_PROJECT=""
+CLI_VAULT_PASS=""
 
-set +x
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        -h|--help)                show_help ;;
+        -p|--project)             require_arg "$1" "${2:-}"; CLI_PROJECT="$2"; shift 2 ;;
+        -v|--vault-password-file) require_arg "$1" "${2:-}"; CLI_VAULT_PASS="$2"; shift 2 ;;
+        *) trace_msg "WARNING: Ignoring unknown option: $1"; shift ;;
+    esac
+done
 
+# -----------------------------------------------------------------------------
+# 1. Mount Verification
+# -----------------------------------------------------------------------------
+if ! mount | grep -q "$MASTER:$INSTALLDIR on /install"; then
+    trace_msg "Mounting /install from $MASTER:$INSTALLDIR..."
+    /xcatpost/mountinstall || croak "Failed to mount /install from $MASTER:$INSTALLDIR"
+fi
+
+# -----------------------------------------------------------------------------
+# 2. Configuration Resolution
+# -----------------------------------------------------------------------------
+ANSIBLE_PROJECT=$(resolve_ansible_project "$CLI_PROJECT")
+
+# Determine Vault Password Target Path & Filename
+VAULT_DEST=$(resolve_vault_path "$CLI_VAULT_PASS" "$ANSIBLE_PROJECT")
+VAULT_FILE_NAME=$(basename "$VAULT_DEST")
+
+# Secure target directory creation
+( umask 077 && mkdir -p "${TARGET_DIR}" )
+
+# -----------------------------------------------------------------------------
+# 3. Sync Repository & Vault Password File
+# -----------------------------------------------------------------------------
+PROJECT_SRC="${SOURCE_DIR}/${ANSIBLE_PROJECT}"
+
+if [ ! -d "$PROJECT_SRC" ]; then
+    croak "Source Ansible project directory does not exist at $PROJECT_SRC"
+fi
+
+trace_msg "Syncing Ansible project from ${PROJECT_SRC} to ${TARGET_DIR}/..."
+cp -a "$PROJECT_SRC" "${TARGET_DIR}/" || croak "Failed to copy ${PROJECT_SRC} to ${TARGET_DIR}/"
+
+VAULT_SRC="${SOURCE_DIR}/${VAULT_FILE_NAME}"
+VAULT_DEFAULT_LINK="${TARGET_DIR}/${ANSIBLE_PROJECT}-vault-password"
+
+if [ -f "$VAULT_SRC" ]; then
+    trace_msg "Syncing vault password file (${VAULT_FILE_NAME})..."
+    
+    # Copy with restrictive umask to avoid brief permission leakage
+    ( umask 077 && cp -a "$VAULT_SRC" "$VAULT_DEST" ) || croak "Failed to copy vault password file from $VAULT_SRC"
+    chmod 0400 "$VAULT_DEST"
+
+    # Symlink to default project vault name if custom name was configured
+    if [ "$VAULT_DEST" != "$VAULT_DEFAULT_LINK" ]; then
+        ln -sf "$VAULT_DEST" "$VAULT_DEFAULT_LINK"
+    fi
+else
+    trace_msg "Vault password file not found at ${VAULT_SRC}. Skipping vault password sync."
+fi
+
+trace_msg "Ansible sync completed successfully."
 exit 0
